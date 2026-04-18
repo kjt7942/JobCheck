@@ -9,11 +9,13 @@ export default function MonthlyView({
   onAdd,
   onToggle,
   onDelete,
+  onUpdate,
 }: {
   tasks: Task[];
   onAdd: (title: string, date: string) => void;
   onToggle: (id: string, completed: boolean) => void;
   onDelete: (id: string) => void;
+  onUpdate: (id: string, title?: string, date?: string) => void;
 }) {
   const [currentDate, setCurrentDate] = useState(new Date());
 
@@ -104,7 +106,15 @@ export default function MonthlyView({
                           : "bg-white border-green-100 text-green-800 shadow-sm"
                       }`}
                     >
-                      {task.title}
+                      <div className="flex items-center justify-between gap-1 overflow-hidden">
+                        <span className="truncate">{task.title}</span>
+                        {(task.weather || task.tmx !== undefined) && (
+                          <span className="flex items-center gap-0.5 shrink-0 opacity-80 scale-90 origin-right">
+                             {task.weather?.includes("비") ? "🌧️" : task.weather?.includes("맑음") ? "☀️" : task.weather?.includes("흐림") ? "☁️" : ""}
+                             {task.tmx && <span className="text-[8px] font-mono">{task.tmx}°</span>}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   ))}
                   {dayTasks.length > 3 && (

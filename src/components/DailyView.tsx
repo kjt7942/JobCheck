@@ -4,7 +4,7 @@ import { useState } from "react";
 import { format, isSameDay } from "date-fns";
 import { ko } from "date-fns/locale";
 import { Task } from "@/api/client";
-import { Plus, Check, Trash2, Clock, Calendar as CalendarIcon, CheckCircle2, ChevronRight, Activity, Search } from "lucide-react";
+import { Plus, Check, Trash2, Clock, Calendar as CalendarIcon, CheckCircle2, ChevronRight, Activity, Search, Edit2, X, Save, Sun, CloudRain, Cloud } from "lucide-react";
 import DatePicker, { registerLocale } from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
@@ -15,14 +15,25 @@ export default function DailyView({
   onAdd,
   onToggle,
   onDelete,
+  onUpdate,
 }: {
   tasks: Task[];
-  onAdd: (title: string, date: string) => void;
+  onAdd: (title: string, date: string, weather?: string, tmx?: string | number, tmn?: string | number) => void;
   onToggle: (id: string, completed: boolean) => void;
   onDelete: (id: string) => void;
+  onUpdate: (id: string, title?: string, date?: string) => void;
 }) {
   const [newTitle, setNewTitle] = useState("");
   const [startDate, setStartDate] = useState<Date | null>(new Date());
+  
+  // 날씨 수동 입력 상태 (등록 후 초기화하지 않음 - Sticky)
+  const [manualWeather, setManualWeather] = useState("맑음");
+  const [tmx, setTmx] = useState<string>("20");
+  const [tmn, setTmn] = useState<string>("10");
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDate, setEditDate] = useState<Date | null>(null);
 
   const now = new Date();
   const todaysTasks = tasks.filter((t) => isSameDay(new Date(t.date), now))
@@ -35,9 +46,36 @@ export default function DailyView({
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim() || !startDate) return;
-    onAdd(newTitle.trim(), startDate.toISOString());
+    onAdd(newTitle.trim(), startDate.toISOString(), manualWeather, tmx, tmn);
     setNewTitle("");
+    // manualWeather, tmx, tmn은 유지 (Sticky)
   };
+
+  const startEdit = (task: Task) => {
+    setEditingId(task.id);
+    setEditTitle(task.title);
+    setEditDate(new Date(task.date));
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditTitle("");
+    setEditDate(null);
+  };
+
+  const handleSaveEdit = (id: string) => {
+    if (!editTitle.trim() || !editDate) return;
+    onUpdate(id, editTitle.trim(), editDate.toISOString());
+    setEditingId(null);
+  };
+
+  const weatherOptions = [
+    { label: "맑음", icon: <Sun className="w-4 h-4" /> },
+    { label: "흐림", icon: <Cloud className="w-4 h-4" /> },
+    { label: "비", icon: <CloudRain className="w-4 h-4" /> },
+    { label: "바람", icon: <Activity className="w-4 h-4" /> },
+    { label: "눈", icon: <Cloud className="w-4 h-4" /> }, // Snowflake might be better but let's stick to available
+  ];
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in fade-in duration-500">
@@ -76,72 +114,133 @@ export default function DailyView({
                 <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
                   <CalendarIcon className="w-8 h-8 text-gray-300" />
                 </div>
-                <p className="font-medium text-gray-500">오늘 заплани된 일정이 없습니다.</p>
+                <p className="font-medium text-gray-500">오늘 계획된 일정이 없습니다.</p>
                 <p className="text-sm mt-1">우측 패널에서 새로운 일정을 추가해보세요.</p>
               </div>
             ) : (
-              todaysTasks.map((task) => (
+              todaysTasks.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map((task) => (
                 <div
                   key={task.id}
-                  className={`group flex items-center gap-4 p-4 rounded-2xl border transition-all duration-200 cursor-pointer ${
+                  className={`group relative flex items-center gap-4 p-4 rounded-2xl border transition-all duration-200 ${
                     task.completed 
                       ? "bg-gray-50/50 border-gray-100 opacity-60" 
                       : "bg-white border-gray-100 hover:border-gray-300 hover:shadow-sm"
                   }`}
-                  onClick={(e) => {
-                    // 삭제 버튼 영역 내부 클릭 시 절대 실행 금지 (.delete-btn 클래스 검사)
-                    if ((e.target as HTMLElement).closest('.delete-btn')) return;
-                    onToggle(task.id, !task.completed);
-                  }}
                 >
-                  <div className="flex-shrink-0 w-16 text-center">
-                    <span className={`text-sm font-bold ${task.completed ? "text-gray-400" : "text-gray-900"}`}>
-                      {format(new Date(task.date), "HH:mm")}
-                    </span>
-                  </div>
-
-                  {/* Vertical Divider */}
-                  <div className={`w-1 h-10 rounded-full ${task.completed ? "bg-gray-200" : "bg-orange-400"}`}></div>
-
-                  <div className="flex-1 min-w-0 pl-2 flex items-center gap-4">
-                    <div className="flex-1">
-                      <p className={`text-base font-semibold truncate ${task.completed ? "text-gray-400 line-through" : "text-gray-800"}`}>
-                        {task.title}
-                      </p>
+                  {editingId === task.id ? (
+                    <div className="flex-1 flex flex-col sm:flex-row gap-4 w-full animate-in fade-in zoom-in-95 duration-200">
+                       <div className="flex-1 space-y-3">
+                          <input 
+                            type="text"
+                            value={editTitle}
+                            onChange={(e) => setEditTitle(e.target.value)}
+                            className="w-full bg-white border border-orange-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400 outline-none"
+                            autoFocus
+                          />
+                          <div className="flex items-center gap-2">
+                             <Clock className="w-4 h-4 text-orange-400" />
+                             <DatePicker
+                                selected={editDate}
+                                onChange={(date: Date | null) => setEditDate(date)}
+                                showTimeSelect
+                                showTimeSelectOnly
+                                timeIntervals={15}
+                                timeCaption="시간"
+                                dateFormat="HH:mm"
+                                locale="ko"
+                                className="bg-white border border-orange-200 rounded-lg px-3 py-1 text-sm focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400 outline-none w-24 cursor-pointer"
+                             />
+                          </div>
+                       </div>
+                       <div className="flex items-center gap-2 self-end sm:self-center">
+                          <button 
+                            onClick={() => handleSaveEdit(task.id)}
+                            className="action-btn p-2 rounded-lg bg-orange-500 text-white hover:bg-orange-600 transition-colors shadow-sm"
+                            title="저장"
+                          >
+                             <Save className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={cancelEdit}
+                            className="action-btn p-2 rounded-lg bg-gray-100 text-gray-500 hover:bg-gray-200 transition-colors"
+                            title="취소"
+                          >
+                             <X className="w-4 h-4" />
+                          </button>
+                       </div>
                     </div>
+                  ) : (
+                    <>
+                      {/* Task Content */}
+                      <div className="flex-1 min-w-0" onClick={() => onToggle(task.id, !task.completed)}>
+                        <h4 className={`font-bold transition-all duration-300 truncate ${
+                          task.completed ? "text-gray-300 line-through decoration-2" : "text-gray-700"
+                        }`}>
+                          {task.title}
+                        </h4>
+                        <div className="flex items-center gap-3 mt-1">
+                          <span className="flex items-center gap-1 text-[10px] font-mono text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded">
+                            <Clock className="w-3 h-3" />
+                            {format(new Date(task.date), "HH:mm")}
+                          </span>
+                          
+                          {/* Weather Info Display */}
+                          {(task.weather || (task.tmx !== undefined && task.tmx !== null) || (task.tmn !== undefined && task.tmn !== null)) && (
+                            <div className="flex items-center gap-2 text-[10px] text-green-600 font-medium bg-green-50 px-1.5 py-0.5 rounded">
+                              {task.weather && (
+                                <span className="flex items-center gap-1">
+                                  {task.weather.includes("맑음") ? <Sun className="w-3 h-3" /> : 
+                                   task.weather.includes("비") ? <CloudRain className="w-3 h-3" /> : 
+                                   task.weather.includes("흐림") ? <Cloud className="w-3 h-3" /> :
+                                   task.weather.includes("바람") ? <Activity className="w-3 h-3" /> : 
+                                   <Cloud className="w-3 h-3" />}
+                                  {task.weather}
+                                </span>
+                              )}
+                              {(task.tmx !== undefined || task.tmn !== undefined) && (
+                                <span className="flex items-center gap-1 border-l border-green-200 pl-2">
+                                  <span className="text-red-400">{task.tmx}℃</span>
+                                  <span className="text-gray-300">/</span>
+                                  <span className="text-blue-400">{task.tmn}℃</span>
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
 
-                    {/* Check / Delete Actions */}
-                    <div className="flex items-center gap-2 relative z-10">
-                       {task.completed ? (
-                         <div className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center">
+                      {/* Right Indicator & Actions */}
+                      <div className="flex items-center gap-2">
+                        {task.completed ? (
+                          <div className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center">
                             <Check className="w-4 h-4 text-green-500" />
-                         </div>
-                       ) : (
-                         <div 
-                           className="w-8 h-8 rounded-full border-2 border-gray-200 group-hover:border-orange-400 transition-colors cursor-pointer"
-                           onClick={(e) => {
-                             e.stopPropagation();
-                             onToggle(task.id, true);
-                           }}
-                         />
-                       )}
-                       
-                        <button
-                          type="button"
-                          onClick={(e) => { 
-                            e.preventDefault();
-                            e.stopPropagation(); 
-                            if (window.confirm('이 일정을 정말로 삭제할까요?')) {
-                              onDelete(task.id); 
-                            }
-                          }}
-                          className="delete-btn opacity-0 group-hover:opacity-100 w-8 h-8 flex items-center justify-center rounded-full hover:bg-red-50 hover:text-red-500 text-gray-400 transition-all z-20"
-                          title="삭제하기"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                    </div>
-                  </div>
+                          </div>
+                        ) : (
+                          <button 
+                            className="w-8 h-8 rounded-full border-2 border-gray-200 group-hover:border-orange-400 transition-colors flex items-center justify-center"
+                            onClick={(e) => { e.stopPropagation(); onToggle(task.id, true); }}
+                          />
+                        )}
+
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); startEdit(task); }}
+                            className="p-1 text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded-lg transition-all"
+                            title="수정"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onDelete(task.id); }}
+                            className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                            title="삭제"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))
             )}
@@ -186,6 +285,61 @@ export default function DailyView({
               />
             </div>
 
+            {/* Weather & Temp Manual Input */}
+            <div className="pt-2 space-y-4 border-t border-gray-50">
+               <div className="space-y-2">
+                 <label className="text-xs font-semibold text-gray-500 uppercase">날씨 선택</label>
+                 <div className="grid grid-cols-5 gap-1">
+                   {weatherOptions.map((opt) => (
+                     <button
+                       key={opt.label}
+                       type="button"
+                       onClick={() => setManualWeather(opt.label)}
+                       className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${
+                         manualWeather === opt.label 
+                           ? "bg-green-500 border-green-500 text-white shadow-sm shadow-green-200" 
+                           : "bg-gray-50 border-gray-100 text-gray-400 hover:border-green-200"
+                       }`}
+                     >
+                       {opt.icon}
+                       <span className="text-[10px] mt-1 font-bold">{opt.label}</span>
+                     </button>
+                   ))}
+                 </div>
+               </div>
+
+               <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-gray-500 uppercase">최고 기온</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="-30"
+                        max="50"
+                        value={tmx}
+                        onChange={(e) => setTmx(e.target.value)}
+                        className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-green-400/20 focus:border-green-400"
+                      />
+                      <span className="absolute right-3 top-2.5 text-xs text-gray-400">℃</span>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-gray-500 uppercase">최저 기온</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="-30"
+                        max="50"
+                        value={tmn}
+                        onChange={(e) => setTmn(e.target.value)}
+                        className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-green-400/20 focus:border-green-400"
+                      />
+                      <span className="absolute right-3 top-2.5 text-xs text-gray-400">℃</span>
+                    </div>
+                  </div>
+               </div>
+            </div>
+
             <button
               type="submit"
               disabled={!newTitle.trim() || !startDate}
@@ -203,8 +357,8 @@ export default function DailyView({
            </div>
            <h4 className="text-lg font-bold text-gray-800 mb-1">훌륭합니다!</h4>
            <p className="text-sm font-medium text-gray-500 mb-6">
-             오늘 총 <strong className="text-gray-800">{totalCount}</strong>개의 일정 중<br/>
-             <strong className="text-gray-800">{completedCount}</strong>개를 완료하셨습니다.
+              오늘 총 <strong className="text-gray-800">{totalCount}</strong>개의 일정 중<br/>
+              <strong className="text-gray-800">{completedCount}</strong>개를 완료하셨습니다.
            </p>
            
            <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
@@ -214,9 +368,7 @@ export default function DailyView({
               />
            </div>
         </div>
-
       </div>
-
     </div>
   );
 }
