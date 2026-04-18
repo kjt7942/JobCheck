@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { fetchTasks, addTask, Task } from "@/api/client";
+import { fetchTasks, addTask, toggleTask, deleteTask, Task } from "@/api/client";
 import { CalendarDays, Calendar, ListTodo, CalendarRange, Sprout } from "lucide-react";
 import DailyView from "@/components/DailyView";
 import MonthlyView from "@/components/MonthlyView";
 import WeeklyView from "@/components/WeeklyView";
+import YearlyView from "@/components/YearlyView";
 
 type Tab = "daily" | "weekly" | "monthly" | "yearly";
 
@@ -36,11 +37,47 @@ export default function Home() {
     await loadTasks(); // Refresh to get real ID
   };
 
+  const handleToggleTask = async (id: string, completed: boolean) => {
+    // 임시 ID(숫자 형태)인 경우 서버 요청 방지
+    if (id.includes('.')) {
+      console.warn("Task is still being created. Please wait.");
+      return;
+    }
+    setTasks((prev) => prev.map(t => t.id === id ? { ...t, completed } : t));
+    try {
+      await toggleTask(id, completed);
+    } catch (e) {
+      console.error("Toggle failed:", e);
+      // 복구 로직 (에러 시 다시 원래 상태로)
+      setTasks((prev) => prev.map(t => t.id === id ? { ...t, completed: !completed } : t));
+      alert("일정 상태를 변경하는 데 실패했습니다. 다시 시도해주세요.");
+    }
+  };
+
+  const handleDeleteTask = async (id: string) => {
+    if (id.includes('.')) {
+      console.warn("Task is still being created. Please wait.");
+      return;
+    }
+    const confirmed = confirm("이 일정을 정말로 삭제할까요?");
+    if (!confirmed) return;
+
+    const originalTasks = [...tasks];
+    setTasks((prev) => prev.filter(t => t.id !== id));
+    try {
+      await deleteTask(id);
+    } catch (e) {
+      console.error("Delete failed:", e);
+      setTasks(originalTasks);
+      alert("일정 삭제에 실패했습니다.");
+    }
+  };
+
   const tabs = [
     { id: "daily", label: "일일 할일", icon: ListTodo },
     { id: "weekly", label: "주간 일정", icon: CalendarDays },
     { id: "monthly", label: "월간 달력", icon: CalendarRange },
-    { id: "yearly", label: "연도별 달력", icon: Calendar },
+    { id: "yearly", label: "연간 일정", icon: Calendar },
   ];
 
   return (
@@ -84,13 +121,34 @@ export default function Home() {
           </div>
         ) : (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-            {activeTab === "daily" && <DailyView tasks={tasks} onAdd={handleAddTask} />}
-            {activeTab === "weekly" && <WeeklyView tasks={tasks} onAdd={handleAddTask} />}
-            {activeTab === "monthly" && <MonthlyView tasks={tasks} onAdd={handleAddTask} />}
+            {activeTab === "daily" && (
+              <DailyView 
+                tasks={tasks} 
+                onAdd={handleAddTask} 
+                onToggle={handleToggleTask} 
+                onDelete={handleDeleteTask} 
+              />
+            )}
+            {activeTab === "weekly" && (
+              <WeeklyView 
+                tasks={tasks} 
+                onAdd={handleAddTask} 
+                onToggle={handleToggleTask} 
+                onDelete={handleDeleteTask} 
+              />
+            )}
+            {activeTab === "monthly" && (
+              <MonthlyView 
+                tasks={tasks} 
+                onAdd={handleAddTask} 
+                onToggle={handleToggleTask} 
+                onDelete={handleDeleteTask} 
+              />
+            )}
             {activeTab === "yearly" && (
-              <div className="text-center py-20 text-gray-400">
-                연도별 뷰는 준비중입니다!
-              </div>
+              <YearlyView 
+                tasks={tasks} 
+              />
             )}
           </div>
         )}
