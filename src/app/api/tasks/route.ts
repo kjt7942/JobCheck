@@ -19,11 +19,14 @@ export async function GET(request: Request) {
       const titleProp = titleKeys.length > 0 ? page.properties[titleKeys[0]] : null;
       const title = titleProp?.title?.[0]?.plain_text || "이름 없는 작업";
       
+      const dateProp = page.properties["일자"];
+      const date = dateProp?.date?.start || page.created_time;
+      
       return {
         id: page.id,
         title,
         completed: false, // We'll assume false if we can't find a checkbox prop
-        date: page.created_time, // fallback to creation time
+        date,
       };
     });
 
@@ -50,6 +53,9 @@ export async function POST(request: Request) {
             },
           ],
         },
+        "일자": {
+          date: { start: body.date || new Date().toISOString() }
+        }
       },
     });
 

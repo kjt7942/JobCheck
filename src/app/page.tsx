@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { fetchTasks, addTask, Task } from "@/api/client";
-import { CalendarDays, CalendarPrompt, ListTodo, CalendarRange, Sprout } from "lucide-react";
+import { CalendarDays, Calendar, ListTodo, CalendarRange, Sprout } from "lucide-react";
 import DailyView from "@/components/DailyView";
 import MonthlyView from "@/components/MonthlyView";
 import WeeklyView from "@/components/WeeklyView";
@@ -40,7 +40,7 @@ export default function Home() {
     { id: "daily", label: "일일 할일", icon: ListTodo },
     { id: "weekly", label: "주간 일정", icon: CalendarDays },
     { id: "monthly", label: "월간 달력", icon: CalendarRange },
-    { id: "yearly", label: "연도별 달력", icon: CalendarPrompt },
+    { id: "yearly", label: "연도별 달력", icon: Calendar },
   ];
 
   return (

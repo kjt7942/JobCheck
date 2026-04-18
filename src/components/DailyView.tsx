@@ -14,14 +14,18 @@ export default function DailyView({
   onAdd: (title: string, date: string) => void;
 }) {
   const [newTitle, setNewTitle] = useState("");
-  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const now = new Date();
+  const nextHour = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours() + 1, 0);
+  const [newDate, setNewDate] = useState(format(nextHour, "yyyy-MM-dd'T'HH:mm"));
+
+  const todayStr = format(now, "yyyy-MM-dd");
 
   const todaysTasks = tasks.filter((t) => t.date.startsWith(todayStr));
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
-    onAdd(newTitle.trim(), new Date().toISOString());
+    onAdd(newTitle.trim(), new Date(newDate).toISOString());
     setNewTitle("");
   };
 
@@ -37,22 +41,30 @@ export default function DailyView({
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-green-50 p-2 sm:p-6">
-        <form onSubmit={handleAdd} className="flex gap-2 mb-6">
-          <input
-            type="text"
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-            placeholder="예) 토마토 모종 심기..."
-            className="flex-1 border-0 bg-green-50/50 rounded-xl px-4 py-3 text-gray-700 placeholder-green-300 focus:ring-2 focus:ring-green-400 focus:bg-white transition-all outline-none"
-          />
-          <button
-            type="submit"
-            disabled={!newTitle.trim()}
-            className="bg-green-600 hover:bg-green-700 disabled:bg-green-300 disabled:cursor-not-allowed text-white px-5 rounded-xl font-medium transition-all flex items-center gap-2 group"
-          >
-            <Plus className="w-5 h-5 group-hover:rotate-90 transition-transform" />
-            <span className="hidden sm:inline">추가하기</span>
-          </button>
+        <form onSubmit={handleAdd} className="flex flex-col gap-4 mb-6">
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="text"
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              placeholder="예) 토마토 모종 심기..."
+              className="flex-1 border-0 bg-green-50/50 rounded-xl px-4 py-3 text-gray-700 placeholder-green-300 focus:ring-2 focus:ring-green-400 focus:bg-white transition-all outline-none"
+            />
+            <input
+              type="datetime-local"
+              value={newDate}
+              onChange={(e) => setNewDate(e.target.value)}
+              className="border-0 bg-green-50/50 rounded-xl px-4 py-3 text-gray-700 focus:ring-2 focus:ring-green-400 focus:bg-white transition-all outline-none"
+            />
+            <button
+              type="submit"
+              disabled={!newTitle.trim()}
+              className="bg-green-600 hover:bg-green-700 disabled:bg-green-300 disabled:cursor-not-allowed text-white px-5 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 group"
+            >
+              <Plus className="w-5 h-5 group-hover:rotate-90 transition-transform" />
+              <span>추가하기</span>
+            </button>
+          </div>
         </form>
 
         <div className="space-y-3">
@@ -74,6 +86,9 @@ export default function DailyView({
                 </button>
                 <span className={`flex-1 text-lg ${task.completed ? "text-gray-400 line-through" : "text-gray-700"}`}>
                   {task.title}
+                </span>
+                <span className="text-sm text-gray-400 font-mono">
+                  {format(new Date(task.date), "HH:mm")}
                 </span>
               </div>
             ))
