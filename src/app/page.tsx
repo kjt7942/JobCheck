@@ -9,6 +9,7 @@ import MonthlyView from "@/components/MonthlyView";
 import WeeklyView from "@/components/WeeklyView";
 import YearlyView from "@/components/YearlyView";
 import SettingsModal from "@/components/SettingsModal";
+import ConfirmModal from "@/components/ConfirmModal";
 
 type Tab = "daily" | "weekly" | "monthly" | "yearly";
 
@@ -17,6 +18,8 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("daily");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
+  const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
   const [farmInfo, setFarmInfo] = useState<{ name: string; region: string; lat: number; lng: number }>({ 
     name: "우리 농장", 
     region: "서울",
@@ -104,10 +107,18 @@ export default function Home() {
     }
   };
 
-  const handleDeleteTask = async (id: string) => {
+  const handleDeleteTask = (id: string) => {
     if (id.includes('.')) return;
-    const confirmed = confirm("이 일정을 정말로 삭제할까요?");
-    if (!confirmed) return;
+    setTaskToDelete(id);
+    setIsConfirmDeleteOpen(true);
+  };
+
+  const executeDeleteTask = async () => {
+    if (!taskToDelete) return;
+    const id = taskToDelete;
+    setIsConfirmDeleteOpen(false);
+    setTaskToDelete(null);
+
     const originalTasks = [...tasks];
     setTasks((prev) => prev.filter(t => t.id !== id));
     try {
@@ -117,12 +128,19 @@ export default function Home() {
     }
   };
 
-  const handleUpdateTask = async (id: string, title?: string, date?: string) => {
+  const handleUpdateTask = async (id: string, title?: string, date?: string, weather?: string, tmx?: string | number, tmn?: string | number) => {
     if (id.includes('.')) return;
     const originalTasks = [...tasks];
-    setTasks((prev) => prev.map(t => t.id === id ? { ...t, ...(title && { title }), ...(date && { date }) } : t));
+    setTasks((prev) => prev.map(t => t.id === id ? { 
+      ...t, 
+      ...(title && { title }), 
+      ...(date && { date }),
+      ...(weather !== undefined && { weather }),
+      ...(tmx !== undefined && { tmx }),
+      ...(tmn !== undefined && { tmn })
+    } : t));
     try {
-      await updateTask(id, { title, date });
+      await updateTask(id, { title, date, weather, tmx, tmn });
     } catch (e) {
       setTasks(originalTasks);
     }
@@ -182,6 +200,19 @@ export default function Home() {
         onClose={() => setIsSettingsOpen(false)} 
         farmInfo={farmInfo as any} 
         onSave={handleSettingsSave} 
+      />
+
+      <ConfirmModal
+        isOpen={isConfirmDeleteOpen}
+        title="일정 삭제"
+        message="이 일정을 정말로 삭제할까요? 삭제된 내용은 복구할 수 없습니다."
+        confirmText="삭제하기"
+        cancelText="취소"
+        onConfirm={executeDeleteTask}
+        onCancel={() => {
+          setIsConfirmDeleteOpen(false);
+          setTaskToDelete(null);
+        }}
       />
 
       {/* Main Content */}

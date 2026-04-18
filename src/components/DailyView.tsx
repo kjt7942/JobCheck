@@ -21,7 +21,7 @@ export default function DailyView({
   onAdd: (title: string, date: string, weather?: string, tmx?: string | number, tmn?: string | number) => void;
   onToggle: (id: string, completed: boolean) => void;
   onDelete: (id: string) => void;
-  onUpdate: (id: string, title?: string, date?: string) => void;
+  onUpdate: (id: string, title?: string, date?: string, weather?: string, tmx?: string | number, tmn?: string | number) => void;
 }) {
   const [newTitle, setNewTitle] = useState("");
   const [startDate, setStartDate] = useState<Date | null>(new Date());
@@ -34,6 +34,9 @@ export default function DailyView({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editDate, setEditDate] = useState<Date | null>(null);
+  const [editWeather, setEditWeather] = useState("");
+  const [editTmx, setEditTmx] = useState<string>("");
+  const [editTmn, setEditTmn] = useState<string>("");
 
   const now = new Date();
   const todaysTasks = tasks.filter((t) => isSameDay(new Date(t.date), now))
@@ -55,17 +58,23 @@ export default function DailyView({
     setEditingId(task.id);
     setEditTitle(task.title);
     setEditDate(new Date(task.date));
+    setEditWeather(task.weather || "맑음");
+    setEditTmx(task.tmx ? String(task.tmx) : "");
+    setEditTmn(task.tmn ? String(task.tmn) : "");
   };
 
   const cancelEdit = () => {
     setEditingId(null);
     setEditTitle("");
     setEditDate(null);
+    setEditWeather("");
+    setEditTmx("");
+    setEditTmn("");
   };
 
   const handleSaveEdit = (id: string) => {
     if (!editTitle.trim() || !editDate) return;
-    onUpdate(id, editTitle.trim(), editDate.toISOString());
+    onUpdate(id, editTitle.trim(), editDate.toISOString(), editWeather, editTmx, editTmn);
     setEditingId(null);
   };
 
@@ -137,7 +146,7 @@ export default function DailyView({
                             className="w-full bg-white border border-orange-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400 outline-none"
                             autoFocus
                           />
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                              <Clock className="w-4 h-4 text-orange-400" />
                              <DatePicker
                                 selected={editDate}
@@ -150,8 +159,55 @@ export default function DailyView({
                                 locale="ko"
                                 className="bg-white border border-orange-200 rounded-lg px-3 py-1 text-sm focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400 outline-none w-24 cursor-pointer"
                              />
-                          </div>
-                       </div>
+                             <div className="flex items-center gap-2 border-l border-orange-100 pl-2 ml-1">
+                               <select
+                                 value={editWeather}
+                                 onChange={(e) => setEditWeather(e.target.value)}
+                                 className="bg-white border border-orange-200 rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400 outline-none text-gray-600 appearance-none min-w-[70px]"
+                               >
+                                 <option value="">날씨 선택</option>
+                                 {weatherOptions.map(opt => (
+                                   <option key={opt.label} value={opt.label}>{opt.label}</option>
+                                 ))}
+                               </select>
+                                <div className="flex items-center gap-1">
+                                   <input
+                                     type="number"
+                                     min="-30"
+                                     max="50"
+                                     placeholder="최고"
+                                     value={editTmx}
+                                     onChange={(e) => {
+                                       const val = e.target.value;
+                                       if (val === "") { setEditTmx(""); return; }
+                                       const num = Number(val);
+                                       if (num < -30) setEditTmx("-30");
+                                       else if (num > 50) setEditTmx("50");
+                                       else setEditTmx(val);
+                                     }}
+                                     className="w-14 bg-white border border-orange-200 rounded-lg px-2 py-1 text-sm text-red-500 placeholder-red-300 focus:outline-none focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400 text-center"
+                                   />
+                                   <span className="text-gray-300">/</span>
+                                   <input
+                                     type="number"
+                                     min="-30"
+                                     max="50"
+                                     placeholder="최저"
+                                     value={editTmn}
+                                     onChange={(e) => {
+                                       const val = e.target.value;
+                                       if (val === "") { setEditTmn(""); return; }
+                                       const num = Number(val);
+                                       if (num < -30) setEditTmn("-30");
+                                       else if (num > 50) setEditTmn("50");
+                                       else setEditTmn(val);
+                                     }}
+                                     className="w-14 bg-white border border-orange-200 rounded-lg px-2 py-1 text-sm text-blue-500 placeholder-blue-300 focus:outline-none focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400 text-center"
+                                   />
+                                 </div>
+                              </div>
+                           </div>
+                        </div>
                        <div className="flex items-center gap-2 self-end sm:self-center">
                           <button 
                             onClick={() => handleSaveEdit(task.id)}
@@ -317,7 +373,14 @@ export default function DailyView({
                         min="-30"
                         max="50"
                         value={tmx}
-                        onChange={(e) => setTmx(e.target.value)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "") { setTmx(""); return; }
+                          const num = Number(val);
+                          if (num < -30) setTmx("-30");
+                          else if (num > 50) setTmx("50");
+                          else setTmx(val);
+                        }}
                         className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-green-400/20 focus:border-green-400"
                       />
                       <span className="absolute right-3 top-2.5 text-xs text-gray-400">℃</span>
@@ -331,7 +394,14 @@ export default function DailyView({
                         min="-30"
                         max="50"
                         value={tmn}
-                        onChange={(e) => setTmn(e.target.value)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "") { setTmn(""); return; }
+                          const num = Number(val);
+                          if (num < -30) setTmn("-30");
+                          else if (num > 50) setTmn("50");
+                          else setTmn(val);
+                        }}
                         className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-green-400/20 focus:border-green-400"
                       />
                       <span className="absolute right-3 top-2.5 text-xs text-gray-400">℃</span>

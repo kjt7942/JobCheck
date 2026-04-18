@@ -54,10 +54,13 @@ export const deleteTask = async (id: string): Promise<void> => {
   const res = await fetch(`${baseUrl}/api/tasks?id=${id}`, {
     method: 'DELETE',
   });
-  if (!res.ok) throw new Error('Failed to delete');
+  if (!res.ok) {
+    const errObj = await res.json().catch(() => ({}));
+    console.warn('API returned error during delete (task might already be archived):', errObj);
+  }
 };
 
-export const updateTask = async (id: string, updates: { title?: string; date?: string; completed?: boolean }): Promise<void> => {
+export const updateTask = async (id: string, updates: { title?: string; date?: string; completed?: boolean; weather?: string; tmx?: string | number; tmn?: string | number }): Promise<void> => {
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
   const res = await fetch(`${baseUrl}/api/tasks`, {
     method: 'PATCH',

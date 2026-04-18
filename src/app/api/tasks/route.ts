@@ -1,34 +1,50 @@
-import { Client } from "@notionhq/client";
 import { NextResponse } from "next/server";
-import { getKmaWeather } from "@/lib/weather";
 
-const notion = new Client({ auth: process.env.NOTION_TOKEN });
-const databaseId = process.env.NOTION_DATABASE_ID!;
+export const dynamic = 'force-dynamic';
+const NOTION_TOKEN = process.env.NOTION_TOKEN!;
+const DATABASE_ID = process.env.NOTION_DATABASE_ID!;
+
+async function notionFetch(endpoint: string, method: string = 'GET', body?: any) {
+  const res = await fetch(`https://api.notion.com/v1${endpoint}`, {
+    method,
+    headers: {
+      'Authorization': `Bearer ${NOTION_TOKEN}`,
+      'Notion-Version': '2022-06-28',
+      'Content-Type': 'application/json',
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  if (!res.ok) {
+    const error = await res.json();
+    throw new Error(error.message || 'Notion API Error');
+  }
+
+  return res.json();
+}
 
 export async function GET() {
   try {
-    const response = await (notion as any).databases.query({
-      database_id: databaseId,
+    const response = await notionFetch(`/databases/${DATABASE_ID}/query`, 'POST', {
       sorts: [{ property: "일자", direction: "descending" }],
     });
 
     const tasks = response.results.map((page: any) => {
       const props = page.properties;
-      
-      const title = props["Name"]?.title?.[0]?.plain_text || "이름 없는 작업";
-      const date = props["일자"]?.date?.start || page.created_time;
-      const completed = props["완료여부"]?.checkbox || false;
-
-      let weather = props["날씨"]?.rich_text?.[0]?.plain_text || props["날씨"]?.select?.name || null;
-      let tmx = props["최고기온"]?.number !== undefined ? props["최고기온"]?.number : props["최고기온"]?.rich_text?.[0]?.plain_text || null;
-      let tmn = props["최저기온"]?.number !== undefined ? props["최저기온"]?.number : props["최저기온"]?.rich_text?.[0]?.plain_text || null;
-      
-      return { id: page.id, title, completed, date, weather, tmx, tmn };
+      return {
+        id: page.id,
+        title: props.할일?.title?.[0]?.plain_text || "제목 없음",
+        date: props.일자?.date?.start || "",
+        weather: props.날씨?.rich_text?.[0]?.plain_text || "",
+        tmx: props.최고기온?.number ?? null,
+        tmn: props.최저기온?.number ?? null,
+        completed: props.완료여부?.checkbox || false,
+      };
     });
 
     return NextResponse.json({ tasks });
   } catch (error: any) {
-    console.error("GET Error:", error.message);
+    console.error("Notion Tasks GET Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
@@ -36,50 +52,31 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { title, date, lat, lng, weather, tmx, tmn } = body;
-    
-    // 기상 정보 가져오기 (수동 입력이 없을 때만)
-    let weatherInfo = null;
-    if (!weather && (tmx === undefined || tmn === undefined)) {
-      weatherInfo = await getKmaWeather(lat || 37.5665, lng || 126.9780, date);
-    }
+    const { title, date, weather, tmx, tmn } = body;
 
     const properties: any = {
-      "Name": { title: [{ text: { content: title || "새 작업" } }] },
-      "일자": { date: { start: date || new Date().toISOString() } },
-      "완료여부": { checkbox: false }
+      할일: { title: [{ text: { content: title } }] },
+      일자: { date: { start: date } },
     };
 
-    // 날씨 설정
-    const weatherVal = weather || (weatherInfo ? weatherInfo.icon : "");
-    if (weatherVal) {
-      // DB가 rich_text인지 select인지 모르므로 둘 다 시도할 수도 있지만, 
-      // 이전 조회 결과(MCP)에 따르면 'rich_text'임.
-      properties["날씨"] = { rich_text: [{ text: { content: weatherVal } }] };
+    if (weather) {
+      properties.날씨 = { rich_text: [{ text: { content: weather } }] };
+    }
+    if (tmx !== undefined && tmx !== null && tmx !== "") {
+      properties.최고기온 = { number: Number(tmx) };
+    }
+    if (tmn !== undefined && tmn !== null && tmn !== "") {
+      properties.최저기온 = { number: Number(tmn) };
     }
 
-    // 최고기온 (Number)
-    const tmxVal = tmx !== undefined ? tmx : (weatherInfo ? (weatherInfo as any).tmx : null);
-    if (tmxVal !== null && tmxVal !== "-") {
-      properties["최고기온"] = { number: parseFloat(String(tmxVal)) };
-    }
-
-    // 최저기온 (Number)
-    const tmnVal = tmn !== undefined ? tmn : (weatherInfo ? (weatherInfo as any).tmn : null);
-    if (tmnVal !== null && tmnVal !== "-") {
-      properties["최저기온"] = { number: parseFloat(String(tmnVal)) };
-    }
-
-    console.log("POST: Properties to save:", JSON.stringify(properties, null, 2));
-
-    const response = await (notion as any).pages.create({
-      parent: { database_id: databaseId },
+    const response = await notionFetch('/pages', 'POST', {
+      parent: { database_id: DATABASE_ID },
       properties,
     });
 
-    return NextResponse.json({ success: true, id: response.id });
+    return NextResponse.json(response);
   } catch (error: any) {
-    console.error("POST Error:", error.message);
+    console.error("Notion Tasks POST Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
@@ -87,16 +84,35 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const body = await request.json();
-    const { id, completed, title, date } = body;
+    const { id, completed, title, date, weather, tmx, tmn } = body;
+
     const properties: any = {};
+    if (completed !== undefined) {
+      properties.완료여부 = { checkbox: completed };
+    }
+    if (title !== undefined) {
+      properties.할일 = { title: [{ text: { content: title } }] };
+    }
+    if (date !== undefined) {
+      properties.일자 = { date: { start: date } };
+    }
+    if (weather !== undefined) {
+      properties.날씨 = { rich_text: [{ text: { content: weather } }] };
+    }
+    if (tmx !== undefined) {
+      properties.최고기온 = { number: tmx ? Number(tmx) : null };
+    }
+    if (tmn !== undefined) {
+      properties.최저기온 = { number: tmn ? Number(tmn) : null };
+    }
 
-    if (completed !== undefined) properties["완료여부"] = { checkbox: !!completed };
-    if (title !== undefined) properties["Name"] = { title: [{ text: { content: title } }] };
-    if (date !== undefined) properties["일자"] = { date: { start: date } };
+    const response = await notionFetch(`/pages/${id}`, 'PATCH', {
+      properties,
+    });
 
-    await (notion as any).pages.update({ page_id: id, properties });
-    return NextResponse.json({ success: true });
+    return NextResponse.json(response);
   } catch (error: any) {
+    console.error("Notion Tasks PATCH Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
@@ -105,10 +121,19 @@ export async function DELETE(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
-    if (!id) throw new Error("ID required");
-    await (notion as any).pages.update({ page_id: id, archived: true });
-    return NextResponse.json({ success: true });
+
+    if (!id) {
+      return NextResponse.json({ error: "No ID provided" }, { status: 400 });
+    }
+
+    // Notion API에서 삭제는 아카이브(archived) 업데이트로 처리함
+    const response = await notionFetch(`/pages/${id}`, 'PATCH', {
+      archived: true,
+    });
+
+    return NextResponse.json(response);
   } catch (error: any) {
+    console.error("Notion Tasks DELETE Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
