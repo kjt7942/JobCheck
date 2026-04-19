@@ -10,6 +10,7 @@ import WeeklyView from "@/components/WeeklyView";
 import YearlyView from "@/components/YearlyView";
 import SettingsModal from "@/components/SettingsModal";
 import ConfirmModal from "@/components/ConfirmModal";
+import LoginView from "@/components/LoginView";
 
 type Tab = "daily" | "weekly" | "monthly" | "yearly";
 
@@ -20,6 +21,7 @@ export default function Home() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
   const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [farmInfo, setFarmInfo] = useState<{ name: string; region: string; lat: number; lng: number }>({ 
     name: "우리 농장", 
     region: "서울",
@@ -51,11 +53,39 @@ export default function Home() {
   };
 
   useEffect(() => {
+    // 세션에서 인증 정보 확인
+    const auth = sessionStorage.getItem("is_auth");
+    if (auth === "true") {
+      setIsAuthenticated(true);
+    } else {
+      setIsAuthenticated(false);
+    }
+
     const init = async () => {
       await Promise.all([loadTasks(), loadSettings()]);
     };
     init();
   }, []);
+
+  const handleLogin = async (password: string) => {
+    try {
+      const response = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      
+      if (response.ok) {
+        setIsAuthenticated(true);
+        sessionStorage.setItem("is_auth", "true");
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error("Auth failed:", e);
+      return false;
+    }
+  };
 
   const handleSettingsSave = async (info: { name: string; region: string }) => {
     try {
@@ -152,6 +182,12 @@ export default function Home() {
     { id: "monthly", label: "월간 달력", icon: CalendarRange },
     { id: "yearly", label: "연간 일정", icon: Calendar },
   ];
+
+  if (isAuthenticated === null) return null; // 로딩 중에는 아무것도 안 보여줌
+  
+  if (!isAuthenticated) {
+    return <LoginView onLogin={handleLogin} />;
+  }
 
   return (
     <div className="min-h-screen bg-[#f9fdf8] text-gray-800 font-sans selection:bg-green-200">
