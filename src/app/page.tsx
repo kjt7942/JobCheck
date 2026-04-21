@@ -241,12 +241,6 @@ export default function Home() {
               <Settings className="w-5 h-5" />
             </button>
 
-            <button 
-              onClick={handleLogout}
-              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-500/10 rounded-xl transition-all"
-              title="로그아웃"
-            >
-              <LogOut className="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -257,6 +251,7 @@ export default function Home() {
         onClose={() => setIsSettingsOpen(false)} 
         farmInfo={farmInfo as any} 
         onSave={handleSettingsSave} 
+        onLogout={handleLogout}
       />
 
       <ConfirmModal

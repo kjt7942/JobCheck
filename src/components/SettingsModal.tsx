@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Save, MapPin, Home, Sprout, CalendarDays, Sun, Moon } from "lucide-react";
+import { X, Save, MapPin, Home, Sprout, CalendarDays, Sun, Moon, LogOut } from "lucide-react";
 
 interface FarmInfo {
   name: string;
@@ -15,9 +15,10 @@ interface SettingsModalProps {
   onClose: () => void;
   farmInfo: FarmInfo;
   onSave: (info: FarmInfo) => void;
+  onLogout?: () => void;
 }
 
-export default function SettingsModal({ isOpen, onClose, farmInfo: initialInfo, onSave }: SettingsModalProps) {
+export default function SettingsModal({ isOpen, onClose, farmInfo: initialInfo, onSave, onLogout }: SettingsModalProps) {
   const [info, setInfo] = useState<FarmInfo>(initialInfo);
 
   useEffect(() => {
@@ -151,6 +152,22 @@ export default function SettingsModal({ isOpen, onClose, farmInfo: initialInfo, 
               저장하기
             </button>
           </div>
+
+          {/* Logout Section */}
+          {onLogout && (
+            <div className="pt-4 border-t border-[var(--card-border)]">
+              <button
+                onClick={() => {
+                  onClose();
+                  onLogout();
+                }}
+                className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold text-red-500 hover:bg-red-500/10 transition-all border border-red-500/20"
+              >
+                <LogOut className="w-4 h-4" />
+                로그아웃
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
