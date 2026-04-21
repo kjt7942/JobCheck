@@ -3,7 +3,7 @@ console.log("Client: JS file evaluation started");
 
 import { useState, useEffect } from "react";
 import { fetchTasks, addTask, toggleTask, deleteTask, updateTask, Task, fetchSettings, updateSettings } from "@/api/client";
-import { CalendarDays, Calendar, ListTodo, CalendarRange, Sprout, Settings } from "lucide-react";
+import { CalendarDays, Calendar, ListTodo, CalendarRange, Sprout, Settings, LogOut } from "lucide-react";
 import DailyView from "@/components/DailyView";
 import MonthlyView from "@/components/MonthlyView";
 import WeeklyView from "@/components/WeeklyView";
@@ -11,23 +11,19 @@ import YearlyView from "@/components/YearlyView";
 import SettingsModal from "@/components/SettingsModal";
 import ConfirmModal from "@/components/ConfirmModal";
 import LoginView from "@/components/LoginView";
+import { useApp } from "@/providers/AppProvider";
 
 type Tab = "daily" | "weekly" | "monthly" | "yearly";
 
 export default function Home() {
+  const { isAuthenticated, setIsAuthenticated, farmInfo, setFarmInfo, showToast } = useApp();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("daily");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
+  const [isConfirmLogoutOpen, setIsConfirmLogoutOpen] = useState(false);
   const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
-  const [farmInfo, setFarmInfo] = useState<{ name: string; region: string; lat: number; lng: number }>({ 
-    name: "우리 농장", 
-    region: "서울",
-    lat: 37.5665,
-    lng: 126.9780
-  });
 
   const loadTasks = async () => {
     console.log("Client: Initiating loadTasks...");
@@ -53,19 +49,13 @@ export default function Home() {
   };
 
   useEffect(() => {
-    // 세션에서 인증 정보 확인
-    const auth = sessionStorage.getItem("is_auth");
-    if (auth === "true") {
-      setIsAuthenticated(true);
-    } else {
-      setIsAuthenticated(false);
-    }
-
     const init = async () => {
       await Promise.all([loadTasks(), loadSettings()]);
     };
-    init();
-  }, []);
+    if (isAuthenticated) {
+      init();
+    }
+  }, [isAuthenticated]);
 
   const handleLogin = async (password: string) => {
     try {
@@ -103,7 +93,7 @@ export default function Home() {
         lng = parseFloat(data[0].lon);
         console.log(`Geocoding result for ${info.region}:`, lat, lng);
       } else {
-        alert("지역 정보를 찾을 수 없어 기본 위치(서울)로 설정됩니다.");
+        showToast("지역 정보를 찾을 수 없어 기본 위치로 설정됩니다.", "info");
       }
 
       const newInfo = { ...info, lat, lng };
@@ -112,17 +102,23 @@ export default function Home() {
       // Notion API에 저장
       await updateSettings(newInfo);
       setIsSettingsOpen(false);
+      showToast("농장 설정이 저장되었습니다.");
     } catch (e) {
       console.error("Settings save failed:", e);
-      alert("설정 저장에 실패했습니다.");
+      showToast("설정 저장에 실패했습니다.", "error");
     }
   };
 
-  const handleAddTask = async (title: string, date: string, weather?: string, tmx?: string | number, tmn?: string | number) => {
+  const handleAddTask = async (title: string, date: string, weather?: string, tmx?: string | number, tmn?: string | number, groupId?: string) => {
     const tempId = Math.random().toString();
-    setTasks((prev) => [{ id: tempId, title, completed: false, date, weather: weather || "", tmx, tmn }, ...prev]);
+    setTasks((prev) => [{ id: tempId, title, completed: false, date, weather: weather || "", tmx, tmn, groupId }, ...prev]);
     // farmInfo의 위경도를 함께 전송 (수동 입력 필드도 포함)
-    await addTask(title, date, farmInfo.lat, farmInfo.lng, weather, tmx, tmn);
+    try {
+      await addTask(title, date, farmInfo.lat, farmInfo.lng, weather, tmx, tmn, groupId);
+      showToast("새로운 일정이 등록되었습니다.");
+    } catch (e) {
+      showToast("일정 등록에 실패했습니다.", "error");
+    }
     await loadTasks();
   };
 
@@ -153,12 +149,14 @@ export default function Home() {
     setTasks((prev) => prev.filter(t => t.id !== id));
     try {
       await deleteTask(id);
+      showToast("일정이 삭제되었습니다.");
     } catch (e) {
       setTasks(originalTasks);
+      showToast("삭제에 실패했습니다.", "error");
     }
   };
 
-  const handleUpdateTask = async (id: string, title?: string, date?: string, weather?: string, tmx?: string | number, tmn?: string | number) => {
+  const handleUpdateTask = async (id: string, title?: string, date?: string, weather?: string, tmx?: string | number, tmn?: string | number, groupId?: string) => {
     if (id.includes('.')) return;
     const originalTasks = [...tasks];
     setTasks((prev) => prev.map(t => t.id === id ? { 
@@ -167,13 +165,24 @@ export default function Home() {
       ...(date && { date }),
       ...(weather !== undefined && { weather }),
       ...(tmx !== undefined && { tmx }),
-      ...(tmn !== undefined && { tmn })
+      ...(tmn !== undefined && { tmn }),
+      ...(groupId !== undefined && { groupId })
     } : t));
     try {
-      await updateTask(id, { title, date, weather, tmx, tmn });
+      await updateTask(id, { title, date, weather, tmx, tmn, groupId });
     } catch (e) {
       setTasks(originalTasks);
     }
+  };
+
+  const handleLogout = () => {
+    setIsConfirmLogoutOpen(true);
+  };
+
+  const executeLogout = () => {
+    sessionStorage.removeItem("is_auth");
+    setIsAuthenticated(false);
+    setIsConfirmLogoutOpen(false);
   };
 
   const tabs = [
@@ -190,16 +199,20 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f9fdf8] text-gray-800 font-sans selection:bg-green-200">
+    <div className={`min-h-screen transition-colors duration-300 ${farmInfo.theme === 'dark' ? 'dark' : ''} bg-[var(--background)] text-[var(--foreground)] font-sans selection:bg-green-200`}>
       {/* Header */}
-      <header className="bg-white/70 backdrop-blur-md border-b border-green-100 sticky top-0 z-50">
+      <header className="bg-[var(--header-bg)] backdrop-blur-md border-b border-[var(--card-border)] sticky top-0 z-50">
         <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-green-700">
+          <button 
+            onClick={() => setActiveTab("daily")}
+            className="flex items-center gap-2 text-green-700 hover:opacity-70 transition-opacity active:scale-95"
+            title="일일 일정으로 이동"
+          >
             <Sprout className="w-7 h-7" />
             <h1 className="text-xl font-bold tracking-tight">{farmInfo.name}</h1>
-          </div>
+          </button>
           <div className="flex items-center gap-2">
-            <div className="flex gap-1 bg-green-50/50 p-1 rounded-xl">
+            <div className="flex gap-1 bg-green-500/10 p-1 rounded-xl">
               {tabs.map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
@@ -209,8 +222,8 @@ export default function Home() {
                     onClick={() => setActiveTab(tab.id as Tab)}
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
                       isActive 
-                        ? "bg-white text-green-700 shadow-sm border border-green-100/50" 
-                        : "text-gray-500 hover:text-green-600 hover:bg-green-50"
+                        ? "bg-[var(--card-bg)] text-green-600 shadow-sm border border-[var(--card-border)]" 
+                        : "text-gray-500 hover:text-green-600 hover:bg-green-500/10"
                     }`}
                   >
                     <Icon className="w-4 h-4" />
@@ -222,10 +235,18 @@ export default function Home() {
             
             <button 
               onClick={() => setIsSettingsOpen(true)}
-              className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-xl transition-all"
+              className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-500/10 rounded-xl transition-all"
               title="농장 설정"
             >
               <Settings className="w-5 h-5" />
+            </button>
+
+            <button 
+              onClick={handleLogout}
+              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-500/10 rounded-xl transition-all"
+              title="로그아웃"
+            >
+              <LogOut className="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -251,6 +272,16 @@ export default function Home() {
         }}
       />
 
+      <ConfirmModal
+        isOpen={isConfirmLogoutOpen}
+        title="로그아웃"
+        message="정말 로그아웃 하시겠습니까? 다시 접속하려면 비밀번호가 필요합니다."
+        confirmText="로그아웃"
+        cancelText="계속 작업하기"
+        onConfirm={executeLogout}
+        onCancel={() => setIsConfirmLogoutOpen(false)}
+      />
+
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 py-8">
         {loading && tasks.length === 0 ? (
@@ -272,6 +303,7 @@ export default function Home() {
             {activeTab === "weekly" && (
               <WeeklyView 
                 tasks={tasks} 
+                farmInfo={farmInfo}
                 onAdd={handleAddTask} 
                 onToggle={handleToggleTask} 
                 onDelete={handleDeleteTask} 
@@ -281,6 +313,7 @@ export default function Home() {
             {activeTab === "monthly" && (
               <MonthlyView 
                 tasks={tasks} 
+                farmInfo={farmInfo}
                 onAdd={handleAddTask} 
                 onToggle={handleToggleTask} 
                 onDelete={handleDeleteTask} 

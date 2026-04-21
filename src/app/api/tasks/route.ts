@@ -39,6 +39,7 @@ export async function GET() {
         tmx: props.최고기온?.number ?? null,
         tmn: props.최저기온?.number ?? null,
         completed: props.완료여부?.checkbox || false,
+        groupId: props.groupId?.rich_text?.[0]?.plain_text || "",
       };
     });
 
@@ -52,12 +53,16 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { title, date, weather, tmx, tmn } = body;
+    const { title, date, weather, tmx, tmn, groupId } = body;
 
     const properties: any = {
       할일: { title: [{ text: { content: title } }] },
       일자: { date: { start: date } },
     };
+
+    if (groupId) {
+      properties.groupId = { rich_text: [{ text: { content: groupId } }] };
+    }
 
     if (weather) {
       properties.날씨 = { rich_text: [{ text: { content: weather } }] };
@@ -84,7 +89,7 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const body = await request.json();
-    const { id, completed, title, date, weather, tmx, tmn } = body;
+    const { id, completed, title, date, weather, tmx, tmn, groupId } = body;
 
     const properties: any = {};
     if (completed !== undefined) {
@@ -104,6 +109,9 @@ export async function PATCH(request: Request) {
     }
     if (tmn !== undefined) {
       properties.최저기온 = { number: tmn ? Number(tmn) : null };
+    }
+    if (groupId !== undefined) {
+      properties.groupId = { rich_text: [{ text: { content: groupId || "" } }] };
     }
 
     const response = await notionFetch(`/pages/${id}`, 'PATCH', {

@@ -16,7 +16,7 @@ export default function LoginView({ onLogin }: LoginViewProps) {
     e.preventDefault();
     setLoading(true);
     setError(false);
-    
+
     const success = await onLogin(password);
     if (!success) {
       setError(true);
@@ -57,11 +57,10 @@ export default function LoginView({ onLogin }: LoginViewProps) {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className={`w-full px-5 py-4 bg-gray-50 border-2 rounded-2xl outline-none transition-all duration-300 focus:bg-white ${
-                      error 
-                        ? "border-red-200 focus:border-red-400 shake" 
+                    className={`w-full px-5 py-4 bg-gray-50 border-2 rounded-2xl outline-none transition-all duration-300 focus:bg-white ${error
+                        ? "border-red-200 focus:border-red-400 shake"
                         : "border-gray-100 focus:border-green-500 group-hover:border-gray-200"
-                    }`}
+                      }`}
                     autoFocus
                   />
                   {error && (
@@ -90,10 +89,21 @@ export default function LoginView({ onLogin }: LoginViewProps) {
           </div>
 
           {/* Footer */}
-          <div className="p-6 bg-gray-50/50 border-t border-gray-100 text-center">
-            <p className="text-xs text-gray-400">
-              © 2026 하네스 엔지니어링 시스템 • 무단 접속 금지
-            </p>
+          <div className="p-6 bg-gray-50/50 border-t border-gray-100 text-center relative overflow-hidden">
+            <div className="absolute inset-0 opacity-5 pointer-events-none bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-green-300 via-transparent to-transparent"></div>
+            <div className="relative z-10">
+              <p className="text-[11px] font-bold text-green-800/40 tracking-[0.2em] uppercase mb-2">
+                Secure Environment
+              </p>
+              <p className="text-xs text-gray-400 font-medium">
+                © {new Date().getFullYear()} 꿀송이농장 <span className="mx-1">•</span> 작업관리시스템
+              </p>
+              <div className="mt-3 flex justify-center gap-4 text-[10px] text-gray-300 font-semibold uppercase tracking-widest">
+                <span>Encryption Active</span>
+                <span className="w-1 h-1 rounded-full bg-green-400 self-center"></span>
+                <span>Protected Access</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>

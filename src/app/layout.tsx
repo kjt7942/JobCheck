@@ -31,6 +31,9 @@ export const viewport: Viewport = {
   userScalable: false,
 };
 
+import { AppProvider } from "@/providers/AppProvider";
+import ToastContainer from "@/components/Toast";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -38,10 +41,15 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="ko"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <AppProvider>
+          {children}
+          <ToastContainer />
+        </AppProvider>
+      </body>
     </html>
   );
 }

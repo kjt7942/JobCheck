@@ -45,7 +45,9 @@ export async function GET() {
       name: props.농장이름?.rich_text?.[0]?.plain_text || "우리 농장",
       region: props.지역?.rich_text?.[0]?.plain_text || "서울",
       lat: props.위도?.number || 37.5665,
-      lng: props.경도?.number || 126.9780
+      lng: props.경도?.number || 126.9780,
+      weekStartsOn: props.시작요일?.number ?? 1,
+      theme: props.테마?.rich_text?.[0]?.plain_text || "light"
     });
   } catch (error: any) {
     console.error("Settings GET Error:", error);
@@ -56,7 +58,7 @@ export async function GET() {
 export async function PATCH(request: Request) {
   try {
     const body = await request.json();
-    const { name, region, lat, lng } = body;
+    const { name, region, lat, lng, weekStartsOn, theme } = body;
 
     const data = await notionFetch(`/databases/${SETTINGS_DATABASE_ID}/query`, 'POST', {
       page_size: 1,
@@ -68,6 +70,8 @@ export async function PATCH(request: Request) {
       지역: { rich_text: [{ text: { content: region } }] },
       위도: { number: lat },
       경도: { number: lng },
+      시작요일: { number: weekStartsOn ?? 1 },
+      테마: { rich_text: [{ text: { content: theme || "light" } }] },
     };
 
     if (data.results.length > 0) {

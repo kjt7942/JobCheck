@@ -19,12 +19,12 @@ export default function YearlyView({
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       {/* Header */}
       <div className="flex items-center gap-3 mb-2">
-        <div className="bg-green-100 p-2 rounded-xl text-green-700">
+        <div className="bg-green-500/10 p-2 rounded-xl text-green-600">
           <CalendarRange className="w-6 h-6" />
         </div>
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">{currentYear}년 농장 연간 계획</h2>
-          <p className="text-sm text-gray-500">올 한 해의 농사 흐름을 한눈에 확인하세요.</p>
+          <h2 className="text-2xl font-bold text-[var(--foreground)]">{currentYear}년 농장 연간 계획</h2>
+          <p className="text-sm text-gray-400">올 한 해의 농사 흐름을 한눈에 확인하세요.</p>
         </div>
       </div>
 
@@ -38,15 +38,15 @@ export default function YearlyView({
           return (
             <div 
               key={month.toISOString()} 
-              className="bg-white rounded-3xl border border-green-50 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden group"
+              className="bg-[var(--card-bg)] rounded-3xl border border-[var(--card-border)] shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden group"
             >
               {/* Month Header */}
-              <div className="p-5 border-b border-green-50 bg-gradient-to-br from-white to-green-50/30">
+              <div className="p-5 border-b border-[var(--card-border)] bg-gradient-to-br from-[var(--card-bg)] to-[var(--input-bg)]/30">
                 <div className="flex justify-between items-center mb-1">
-                  <span className="text-2xl font-black text-green-800">
+                  <span className="text-2xl font-black text-green-600">
                     {format(month, "M월")}
                   </span>
-                  <div className="bg-white px-2 py-1 rounded-lg border border-green-100 shadow-sm">
+                  <div className="bg-[var(--input-bg)] px-2 py-1 rounded-lg border border-[var(--card-border)] shadow-sm text-[var(--foreground)]">
                     <span className="text-xs font-bold text-green-600">
                       {monthTasks.length}건
                     </span>
@@ -67,9 +67,9 @@ export default function YearlyView({
                     <span className="text-gray-400">완료율</span>
                     <span className="text-green-600">{Math.round(progress)}%</span>
                   </div>
-                  <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-1.5 w-full bg-[var(--input-bg)] rounded-full overflow-hidden border border-[var(--card-border)]">
                     <div 
-                      className="h-full bg-green-500 rounded-full transition-all duration-1000"
+                      className="h-full bg-green-500 rounded-full transition-all duration-1000 shadow-[0_0_10px_rgba(34,197,94,0.3)]"
                       style={{ width: `${progress}%` }}
                     />
                   </div>
@@ -90,8 +90,8 @@ export default function YearlyView({
                       <div className="space-y-1.5">
                         {monthTasks.slice(0, 2).map((task) => (
                           <div key={task.id} className="flex items-center gap-2 group/task">
-                            <div className={`w-1 h-1 rounded-full ${task.completed ? "bg-gray-300" : "bg-green-500"}`} />
-                            <span className={`text-xs truncate font-medium ${task.completed ? "text-gray-300 line-through" : "text-gray-600"}`}>
+                            <div className={`w-1 h-1 rounded-full ${task.completed ? "bg-gray-500/50" : "bg-green-500"}`} />
+                            <span className={`text-xs truncate font-medium ${task.completed ? "text-gray-500 line-through" : "text-[var(--foreground)]"}`}>
                               {task.title}
                             </span>
                           </div>
@@ -108,7 +108,7 @@ export default function YearlyView({
               {/* Footer Indicator */}
               {monthTasks.length > 0 && progress === 100 && (
                 <div className="absolute top-2 right-2 scale-110">
-                  <CheckCircle2 className="w-5 h-5 text-green-500 fill-white" />
+                  <CheckCircle2 className="w-5 h-5 text-green-500 fill-[var(--card-bg)]" />
                 </div>
               )}
             </div>
