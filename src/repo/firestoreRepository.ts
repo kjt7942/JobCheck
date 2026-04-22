@@ -16,8 +16,15 @@ import { db } from "@/lib/firebase";
 import { Job, UserSettings } from "@/types";
 
 export class FirestoreRepository {
-  private jobsCol = collection(db, "jobs");
-  private settingsCol = collection(db, "user_settings");
+  private get jobsCol() {
+    if (!db) throw new Error("Firebase가 초기화되지 않았습니다.");
+    return collection(db, "jobs");
+  }
+
+  private get settingsCol() {
+    if (!db) throw new Error("Firebase가 초기화되지 않았습니다.");
+    return collection(db, "user_settings");
+  }
 
   // --- User Settings ---
   
