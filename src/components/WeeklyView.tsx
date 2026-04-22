@@ -2,7 +2,7 @@ import { format, startOfWeek, addDays, isSameDay, addWeeks, subWeeks } from "dat
 import { ko } from "date-fns/locale";
 import { Check, Circle, Trash2, CalendarDays, Edit2, X, Save, Clock, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
-import { Task } from "@/api/client";
+import { Job } from "@/types";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
@@ -14,12 +14,12 @@ export default function WeeklyView({
   onDelete,
   onUpdate,
 }: {
-  tasks: Task[];
+  tasks: Job[];
   farmInfo: any;
-  onAdd: (title: string, date: string) => void;
-  onToggle: (id: string, completed: boolean) => void;
+  onAdd: (task: string, date: string) => void;
+  onToggle: (id: string, is_done: boolean) => void;
   onDelete: (id: string) => void;
-  onUpdate: (id: string, title?: string, date?: string) => void;
+  onUpdate: (id: string, updates: Partial<Job>) => void;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -35,10 +35,10 @@ export default function WeeklyView({
   const goToNextWeek = () => setViewDate(prev => addWeeks(prev, 1));
   const goToCurrentWeek = () => setViewDate(new Date());
 
-  const startEdit = (task: Task) => {
-    setEditingId(task.id);
-    setEditTitle(task.title);
-    setEditDate(new Date(task.date));
+  const startEdit = (job: Job) => {
+    setEditingId(job.id!);
+    setEditTitle(job.task);
+    setEditDate(new Date(job.date));
   };
 
   const cancelEdit = () => {
@@ -49,7 +49,10 @@ export default function WeeklyView({
 
   const handleSaveEdit = (id: string) => {
     if (!editTitle.trim() || !editDate) return;
-    onUpdate(id, editTitle.trim(), editDate.toISOString());
+    onUpdate(id, {
+      task: editTitle.trim(),
+      date: editDate.toISOString(),
+    });
     setEditingId(null);
   };
 
@@ -157,19 +160,19 @@ export default function WeeklyView({
                           </div>
                         </div>
                       ) : (
-                        <div className="flex items-start gap-2" onClick={() => onToggle(task.id, !task.completed)}>
+                        <div className="flex items-start gap-2" onClick={() => onToggle(task.id!, !task.is_done)}>
                           <button 
-                            onClick={(e) => { e.stopPropagation(); onToggle(task.id, !task.completed); }}
+                            onClick={(e) => { e.stopPropagation(); onToggle(task.id!, !task.is_done); }}
                             className="mt-0.5 transition-colors"
                           >
-                            {task.completed 
+                            {task.is_done 
                               ? <Check className="w-4 h-4 text-green-500" /> 
                               : <Circle className="w-4 h-4 text-gray-300 group-hover:text-green-400" />
                             }
                           </button>
                           <div className="flex-1 min-w-0">
-                            <p className={`text-sm font-medium leading-tight truncate ${task.completed ? "text-gray-400 line-through opacity-50" : "text-[var(--foreground)]"}`}>
-                              {task.title}
+                            <p className={`text-sm font-medium leading-tight truncate ${task.is_done ? "text-gray-400 line-through opacity-50" : "text-[var(--foreground)]"}`}>
+                              {task.task}
                             </p>
                             <p className="text-[10px] text-gray-400 mt-1 font-mono">
                               {format(new Date(task.date), "HH:mm")}
@@ -183,7 +186,7 @@ export default function WeeklyView({
                               <Edit2 className="w-3 h-3" />
                             </button>
                             <button
-                              onClick={(e) => { e.stopPropagation(); onDelete(task.id); }}
+                              onClick={(e) => { e.stopPropagation(); onDelete(task.id!); }}
                               className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-md transition-all"
                             >
                               <Trash2 className="w-3 h-3" />

@@ -1,12 +1,12 @@
 import { format, startOfYear, eachMonthOfInterval, isSameMonth } from "date-fns";
 import { ko } from "date-fns/locale";
 import { CalendarRange, Target, CheckCircle2, Sprout } from "lucide-react";
-import { Task } from "@/api/client";
+import { Job } from "@/types";
 
 export default function YearlyView({
   tasks,
 }: {
-  tasks: Task[];
+  tasks: Job[];
 }) {
   const currentYear = new Date().getFullYear();
   const yearStart = startOfYear(new Date());
@@ -32,7 +32,7 @@ export default function YearlyView({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {months.map((month) => {
           const monthTasks = tasks.filter((t) => isSameMonth(new Date(t.date), month));
-          const completedCount = monthTasks.filter((t) => t.completed).length;
+          const completedCount = monthTasks.filter((t) => t.is_done).length;
           const progress = monthTasks.length > 0 ? (completedCount / monthTasks.length) * 100 : 0;
 
           return (
@@ -90,9 +90,9 @@ export default function YearlyView({
                       <div className="space-y-1.5">
                         {monthTasks.slice(0, 2).map((task) => (
                           <div key={task.id} className="flex items-center gap-2 group/task">
-                            <div className={`w-1 h-1 rounded-full ${task.completed ? "bg-gray-500/50" : "bg-green-500"}`} />
-                            <span className={`text-xs truncate font-medium ${task.completed ? "text-gray-500 line-through" : "text-[var(--foreground)]"}`}>
-                              {task.title}
+                            <div className={`w-1 h-1 rounded-full ${task.is_done ? "bg-gray-500/50" : "bg-green-500"}`} />
+                            <span className={`text-xs truncate font-medium ${task.is_done ? "text-gray-500 line-through" : "text-[var(--foreground)]"}`}>
+                              {task.task}
                             </span>
                           </div>
                         ))}
@@ -129,12 +129,12 @@ export default function YearlyView({
               <span className="text-[10px] uppercase font-bold text-green-200">총 일정</span>
             </div>
             <div className="flex flex-col items-center">
-              <span className="text-3xl font-black">{tasks.filter(t => t.completed).length}</span>
+              <span className="text-3xl font-black">{tasks.filter(t => t.is_done).length}</span>
               <span className="text-[10px] uppercase font-bold text-green-200">완료됨</span>
             </div>
             <div className="flex flex-col items-center">
               <span className="text-3xl font-black">
-                {Math.round((tasks.filter(t => t.completed).length / (tasks.length || 1)) * 100)}%
+                {Math.round((tasks.filter(t => t.is_done).length / (tasks.length || 1)) * 100)}%
               </span>
               <span className="text-[10px] uppercase font-bold text-green-200">평균 달성률</span>
             </div>

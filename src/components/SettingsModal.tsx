@@ -22,7 +22,8 @@ export default function SettingsModal({ isOpen, onClose, farmInfo: initialInfo, 
   const [info, setInfo] = useState<FarmInfo>(initialInfo);
 
   useEffect(() => {
-    // Ensure default values if missing
+    if (!initialInfo) return;
+
     setInfo({
       ...initialInfo,
       weekStartsOn: initialInfo.weekStartsOn ?? 1,
@@ -30,7 +31,7 @@ export default function SettingsModal({ isOpen, onClose, farmInfo: initialInfo, 
     });
   }, [initialInfo, isOpen]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !initialInfo) return null;
 
   const handleSave = () => {
     onSave(info);

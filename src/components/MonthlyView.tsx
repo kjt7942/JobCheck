@@ -2,7 +2,7 @@ import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInte
 import { ko } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, CalendarRange, Sprout } from "lucide-react";
 import { useState } from "react";
-import { Task } from "@/api/client";
+import { Job } from "@/types";
 
 export default function MonthlyView({
   tasks,
@@ -12,12 +12,12 @@ export default function MonthlyView({
   onDelete,
   onUpdate,
 }: {
-  tasks: Task[];
+  tasks: Job[];
   farmInfo: any;
-  onAdd: (title: string, date: string) => void;
-  onToggle: (id: string, completed: boolean) => void;
+  onAdd: (task: string, date: string) => void;
+  onToggle: (id: string, is_done: boolean) => void;
   onDelete: (id: string) => void;
-  onUpdate: (id: string, title?: string, date?: string) => void;
+  onUpdate: (id: string, updates: Partial<Job>) => void;
 }) {
   const [currentDate, setCurrentDate] = useState(new Date());
 
@@ -108,17 +108,17 @@ export default function MonthlyView({
                     <div 
                       key={task.id}
                       className={`text-[10px] px-1.5 py-0.5 rounded-md truncate border ${
-                        task.completed 
+                        task.is_done 
                           ? "bg-[var(--input-bg)] border-[var(--card-border)] text-gray-400 line-through opacity-50" 
                           : "bg-[var(--card-bg)] border-green-500/20 text-green-600 shadow-sm"
                       }`}
                     >
                       <div className="flex items-center justify-between gap-1 overflow-hidden">
-                        <span className="truncate">{task.title}</span>
-                        {(task.weather || task.tmx !== undefined) && (
+                        <span className="truncate">{task.task}</span>
+                        {(task.weather || task.temp_max !== undefined) && (
                           <span className="flex items-center gap-0.5 shrink-0 opacity-80 scale-90 origin-right">
                              {task.weather?.includes("비") ? "🌧️" : task.weather?.includes("맑음") ? "☀️" : task.weather?.includes("흐림") ? "☁️" : ""}
-                             {task.tmx && <span className="text-[8px] font-mono">{task.tmx}°</span>}
+                             {task.temp_max !== undefined && <span className="text-[8px] font-mono">{task.temp_max}°</span>}
                           </span>
                         )}
                       </div>

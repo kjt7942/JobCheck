@@ -2,7 +2,6 @@
 console.log("Client: JS file evaluation started");
 
 import { useState, useEffect } from "react";
-import { fetchTasks, addTask, toggleTask, deleteTask, updateTask, Task, fetchSettings, updateSettings } from "@/api/client";
 import { CalendarDays, Calendar, ListTodo, CalendarRange, Sprout, Settings, LogOut } from "lucide-react";
 import DailyView from "@/components/DailyView";
 import MonthlyView from "@/components/MonthlyView";
@@ -12,124 +11,93 @@ import SettingsModal from "@/components/SettingsModal";
 import ConfirmModal from "@/components/ConfirmModal";
 import LoginView from "@/components/LoginView";
 import { useApp } from "@/providers/AppProvider";
+import { firestoreRepo } from "@/repo/firestoreRepository";
+import { Job } from "@/types";
 
 type Tab = "daily" | "weekly" | "monthly" | "yearly";
 
 export default function Home() {
-  const { isAuthenticated, setIsAuthenticated, farmInfo, setFarmInfo, showToast } = useApp();
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const { user, settings, loading: authLoading, logout, showToast, refreshSettings } = useApp();
+  const [tasks, setTasks] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("daily");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
   const [isConfirmLogoutOpen, setIsConfirmLogoutOpen] = useState(false);
   const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
+  const [currentDate, setCurrentDate] = useState(new Date().toISOString().split('T')[0]);
 
   const loadTasks = async () => {
-    console.log("Client: Initiating loadTasks...");
+    if (!user) return;
     setLoading(true);
     try {
-      console.log("Client: Calling fetchTasks...");
-      const data = await fetchTasks();
-      console.log("Client: fetchTasks returned", data.length, "tasks");
+      // 모든 사용자의 일정을 공유하여 가져옴
+      const data = await firestoreRepo.getJobs(currentDate);
       setTasks(data);
     } catch (e) {
-      console.error("Client: fetchTasks error:", e);
+      console.error("Load tasks error:", e);
+      showToast("일정을 불러오는 중 오류가 발생했습니다.", "error");
     }
     setLoading(false);
   };
 
-  const loadSettings = async () => {
-    try {
-      const settings = await fetchSettings();
-      setFarmInfo(settings);
-    } catch (e) {
-      console.error("Client: fetchSettings error:", e);
-    }
-  };
-
   useEffect(() => {
-    const init = async () => {
-      await Promise.all([loadTasks(), loadSettings()]);
-    };
-    if (isAuthenticated) {
-      init();
+    if (user) {
+      loadTasks();
     }
-  }, [isAuthenticated]);
+  }, [user, currentDate]);
 
-  const handleLogin = async (password: string) => {
+  const handleSettingsSave = async (info: any) => {
+    if (!user || !settings) return;
     try {
-      const response = await fetch("/api/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
-      });
+      // UI 필드(name, weekStartsOn)를 DB 필드(farm_name, start_day)로 매핑
+      const newSettings: UserSettings = {
+        ...settings,
+        farm_name: info.name,
+        start_day: info.weekStartsOn,
+        theme: info.theme,
+        updated_at: Date.now()
+      };
       
-      if (response.ok) {
-        setIsAuthenticated(true);
-        sessionStorage.setItem("is_auth", "true");
-        return true;
-      }
-      return false;
-    } catch (e) {
-      console.error("Auth failed:", e);
-      return false;
-    }
-  };
-
-  const handleSettingsSave = async (info: { name: string; region: string }) => {
-    try {
-      // Nominatim API를 사용하여 지역명으로 위경도 조회
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(info.region)}&format=json`, {
-        headers: { 'User-Agent': 'JobCheckApp/1.0' }
-      });
-      const data = await response.json();
+      await firestoreRepo.saveUserSettings(newSettings);
       
-      let lat = 37.5665;
-      let lng = 126.9780;
-
-      if (data && data.length > 0) {
-        lat = parseFloat(data[0].lat);
-        lng = parseFloat(data[0].lon);
-        console.log(`Geocoding result for ${info.region}:`, lat, lng);
-      } else {
-        showToast("지역 정보를 찾을 수 없어 기본 위치로 설정됩니다.", "info");
-      }
-
-      const newInfo = { ...info, lat, lng };
-      setFarmInfo(newInfo);
+      // AppProvider의 상태 갱신 (전체 앱에 반영)
+      await refreshSettings(user.uid);
       
-      // Notion API에 저장
-      await updateSettings(newInfo);
       setIsSettingsOpen(false);
-      showToast("농장 설정이 저장되었습니다.");
+      showToast("설정이 저장되었습니다.");
     } catch (e) {
-      console.error("Settings save failed:", e);
+      console.error("Settings save error:", e);
       showToast("설정 저장에 실패했습니다.", "error");
     }
   };
 
-  const handleAddTask = async (title: string, date: string, weather?: string, tmx?: string | number, tmn?: string | number, groupId?: string) => {
-    const tempId = Math.random().toString();
-    setTasks((prev) => [{ id: tempId, title, completed: false, date, weather: weather || "", tmx, tmn, groupId }, ...prev]);
-    // farmInfo의 위경도를 함께 전송 (수동 입력 필드도 포함)
+  const handleAddTask = async (task: string, date: string, weather?: string, temp_max?: string | number, temp_min?: string | number, group_id?: string) => {
+    if (!user) return;
     try {
-      await addTask(title, date, farmInfo.lat, farmInfo.lng, weather, tmx, tmn, groupId);
+      await firestoreRepo.addJob({
+        task,
+        date,
+        is_done: false,
+        user_id: user.uid,
+        group_id: group_id || "",
+        weather: weather || "",
+        temp_max: typeof temp_max === 'string' ? parseFloat(temp_max) : temp_max,
+        temp_min: typeof temp_min === 'string' ? parseFloat(temp_min) : temp_min,
+      });
       showToast("새로운 일정이 등록되었습니다.");
+      loadTasks();
     } catch (e) {
       showToast("일정 등록에 실패했습니다.", "error");
     }
-    await loadTasks();
   };
 
-  const handleToggleTask = async (id: string, completed: boolean) => {
-    if (id.includes('.')) return;
-    setTasks((prev) => prev.map(t => t.id === id ? { ...t, completed } : t));
+  const handleToggleTask = async (id: string, is_done: boolean) => {
     try {
-      await toggleTask(id, completed);
+      await firestoreRepo.updateJob(id, { is_done });
+      setTasks(prev => prev.map(t => t.id === id ? { ...t, is_done } : t));
     } catch (e) {
-      console.error("Toggle failed:", e);
-      setTasks((prev) => prev.map(t => t.id === id ? { ...t, completed: !completed } : t));
+      showToast("상태 변경에 실패했습니다.", "error");
     }
   };
 
@@ -148,7 +116,7 @@ export default function Home() {
     const originalTasks = [...tasks];
     setTasks((prev) => prev.filter(t => t.id !== id));
     try {
-      await deleteTask(id);
+      await firestoreRepo.deleteJob(id);
       showToast("일정이 삭제되었습니다.");
     } catch (e) {
       setTasks(originalTasks);
@@ -156,33 +124,24 @@ export default function Home() {
     }
   };
 
-  const handleUpdateTask = async (id: string, title?: string, date?: string, weather?: string, tmx?: string | number, tmn?: string | number, groupId?: string) => {
+  const handleUpdateTask = async (id: string, updates: Partial<Job>) => {
     if (id.includes('.')) return;
     const originalTasks = [...tasks];
-    setTasks((prev) => prev.map(t => t.id === id ? { 
-      ...t, 
-      ...(title && { title }), 
-      ...(date && { date }),
-      ...(weather !== undefined && { weather }),
-      ...(tmx !== undefined && { tmx }),
-      ...(tmn !== undefined && { tmn }),
-      ...(groupId !== undefined && { groupId })
-    } : t));
+    
+    // UI 즉시 업데이트 (Optimistic Update)
+    setTasks((prev) => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+    
     try {
-      await updateTask(id, { title, date, weather, tmx, tmn, groupId });
+      await firestoreRepo.updateJob(id, updates);
     } catch (e) {
       setTasks(originalTasks);
+      showToast("수정에 실패했습니다.", "error");
     }
   };
 
-  const handleLogout = () => {
-    setIsConfirmLogoutOpen(true);
-  };
-
-  const executeLogout = () => {
-    sessionStorage.removeItem("is_auth");
-    setIsAuthenticated(false);
+  const executeLogout = async () => {
     setIsConfirmLogoutOpen(false);
+    await logout();
   };
 
   const tabs = [
@@ -192,14 +151,23 @@ export default function Home() {
     { id: "yearly", label: "연간 일정", icon: Calendar },
   ];
 
-  if (isAuthenticated === null) return null; // 로딩 중에는 아무것도 안 보여줌
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#f0f9f0]">
+        <div className="flex flex-col items-center gap-4">
+          <Sprout className="w-12 h-12 text-green-600 animate-bounce" />
+          <p className="text-green-700 font-medium">꿀송이농장 준비 중...</p>
+        </div>
+      </div>
+    );
+  }
   
-  if (!isAuthenticated) {
-    return <LoginView onLogin={handleLogin} />;
+  if (!user) {
+    return <LoginView />;
   }
 
   return (
-    <div className={`min-h-screen transition-colors duration-300 ${farmInfo.theme === 'dark' ? 'dark' : ''} bg-[var(--background)] text-[var(--foreground)] font-sans selection:bg-green-200`}>
+    <div className={`min-h-screen transition-colors duration-300 ${settings?.theme === 'dark' ? 'dark' : ''} bg-[var(--background)] text-[var(--foreground)] font-sans selection:bg-green-200`}>
       {/* Header */}
       <header className="bg-[var(--header-bg)] backdrop-blur-md border-b border-[var(--card-border)] sticky top-0 z-50">
         <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -209,7 +177,7 @@ export default function Home() {
             title="일일 일정으로 이동"
           >
             <Sprout className="w-7 h-7" />
-            <h1 className="text-xl font-bold tracking-tight">{farmInfo.name}</h1>
+            <h1 className="text-xl font-bold tracking-tight">{settings?.farm_name || "꿀송이농장"}</h1>
           </button>
           <div className="flex items-center gap-2">
             <div className="flex gap-1 bg-green-500/10 p-1 rounded-xl">
@@ -247,9 +215,14 @@ export default function Home() {
       <SettingsModal 
         isOpen={isSettingsOpen} 
         onClose={() => setIsSettingsOpen(false)} 
-        farmInfo={farmInfo as any} 
+        farmInfo={{
+          name: settings?.farm_name ?? "꿀송이농장",
+          region: settings?.location ?? "경상북도 문경시",
+          weekStartsOn: (settings?.start_day as 0 | 1) ?? 1,
+          theme: (settings?.theme as 'light' | 'dark') ?? 'light'
+        }} 
         onSave={handleSettingsSave} 
-        onLogout={handleLogout}
+        onLogout={() => setIsConfirmLogoutOpen(true)}
       />
 
       <ConfirmModal
@@ -296,7 +269,10 @@ export default function Home() {
             {activeTab === "weekly" && (
               <WeeklyView 
                 tasks={tasks} 
-                farmInfo={farmInfo}
+                farmInfo={{
+                  name: settings?.farm_name,
+                  weekStartsOn: settings?.start_day
+                }}
                 onAdd={handleAddTask} 
                 onToggle={handleToggleTask} 
                 onDelete={handleDeleteTask} 
@@ -306,7 +282,10 @@ export default function Home() {
             {activeTab === "monthly" && (
               <MonthlyView 
                 tasks={tasks} 
-                farmInfo={farmInfo}
+                farmInfo={{
+                  name: settings?.farm_name,
+                  weekStartsOn: settings?.start_day
+                }}
                 onAdd={handleAddTask} 
                 onToggle={handleToggleTask} 
                 onDelete={handleDeleteTask} 
