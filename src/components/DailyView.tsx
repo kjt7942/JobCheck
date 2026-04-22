@@ -261,7 +261,7 @@ export default function DailyView({
                       </div>
                       <div className="flex items-center gap-2 self-end sm:self-center">
                         <button
-                          onClick={() => handleSaveEdit(task.id)}
+                          onClick={() => handleSaveEdit(task.id!)}
                           className="action-btn p-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors shadow-sm"
                           title="저장"
                         >

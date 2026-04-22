@@ -12,7 +12,7 @@ import ConfirmModal from "@/components/ConfirmModal";
 import LoginView from "@/components/LoginView";
 import { useApp } from "@/providers/AppProvider";
 import { firestoreRepo } from "@/repo/firestoreRepository";
-import { Job } from "@/types";
+import { Job, UserSettings } from "@/types";
 
 type Tab = "daily" | "weekly" | "monthly" | "yearly";
 

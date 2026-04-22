@@ -155,7 +155,7 @@ export default function WeeklyView({
                              />
                           </div>
                           <div className="flex gap-1 justify-end">
-                            <button onClick={() => handleSaveEdit(task.id)} className="p-1 rounded bg-green-500 text-white hover:bg-green-600"><Save className="w-3 h-3" /></button>
+                            <button onClick={() => handleSaveEdit(task.id!)} className="p-1 rounded bg-green-500 text-white hover:bg-green-600"><Save className="w-3 h-3" /></button>
                             <button onClick={cancelEdit} className="p-1 rounded bg-gray-100 text-gray-500 hover:bg-gray-200"><X className="w-3 h-3" /></button>
                           </div>
                         </div>
