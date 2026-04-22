@@ -12,10 +12,17 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 };
 
-// 앱 초기화 (중복 초기화 방지)
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+// 앱 초기화 (환경 변수가 있을 때만 실행하여 빌드 오류 방지)
+const app = getApps().length > 0 
+  ? getApp() 
+  : (firebaseConfig.apiKey ? initializeApp(firebaseConfig) : null);
 
-// 서비스 인스턴스 내보내기
-export const db = getFirestore(app);
-export const auth = getAuth(app);
+// 서비스 인스턴스 내보내기 (app이 없을 경우 null 대비)
+export const db = app ? getFirestore(app) : null as any;
+export const auth = app ? getAuth(app) : null as any;
+
+if (!firebaseConfig.apiKey) {
+  console.warn("⚠️ Firebase API Key가 누락되었습니다. Vercel 환경 변수 설정을 확인해주세요.");
+}
+
 export default app;
