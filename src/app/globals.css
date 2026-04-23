@@ -15,6 +15,17 @@
   --header-bg: rgba(255, 255, 255, 0.7);
 }
 
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --background: #0d1117;
+    --foreground: #f0f6fc;
+    --card-bg: #161b22;
+    --card-border: #30363d;
+    --input-bg: #0d1117;
+    --header-bg: rgba(22, 27, 34, 0.7);
+  }
+}
+
 .dark {
   --background: #0d1117;
   --foreground: #f0f6fc;
@@ -56,11 +67,63 @@ body {
 }
 
 .react-datepicker__day--selected {
-  background-color: #fb923c !important; /* orange-400 */
+  background-color: #fb923c !important;
+  /* orange-400 */
   color: white !important;
   border-radius: 0.5rem !important;
 }
 
+.loading-text {
+  color: #15803d;
+  /* green-700 */
+}
+
+@media (prefers-color-scheme: dark) {
+  .loading-text {
+    color: #4ade80;
+    /* green-400 */
+  }
+}
+
+.dark .loading-text {
+  color: #4ade80;
+}
+
 .react-datepicker__time-container .react-datepicker__time .react-datepicker__time-box ul.react-datepicker__time-list li.react-datepicker__time-list-item--selected {
   background-color: #fb923c !important;
+}
+
+/* Mobile App Optimization */
+html,
+body {
+  overscroll-behavior-y: contain;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  /* Disable selection for UI elements */
+}
+
+input,
+textarea {
+  user-select: text;
+  /* Re-enable selection for inputs */
+}
+
+/* Hide scrollbar but allow scrolling */
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@layer utilities {
+  .active-scale {
+    transition: transform 0.1s ease;
+  }
+
+  .active-scale:active {
+    transform: scale(0.96);
+  }
 }

@@ -1,11 +1,13 @@
-import { 
-  onAuthStateChanged, 
+import {
+  onAuthStateChanged,
   User,
   signOut,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   GoogleAuthProvider,
-  signInWithPopup
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { firestoreRepo } from "@/repo/firestoreRepository";
@@ -50,7 +52,7 @@ export class AuthService {
       farm_name: "꿀송이농장",
       latitude: 37.5665,
       longitude: 126.9780,
-      location: "서울",
+      location: "문경시",
       start_day: 0,
       theme: 'light',
       updated_at: Date.now()
@@ -64,39 +66,104 @@ export class AuthService {
    * 구글 로그인
    */
   async loginWithGoogle() {
-    const provider = new GoogleAuthProvider();
-    const userCredential = await signInWithPopup(auth, provider);
-    const user = userCredential.user;
+    try {
+      console.log("AuthService: Starting Google Login with Popup...");
+      const provider = new GoogleAuthProvider();
+      // 팝업 요청 시 추가 옵션 설정 가능
+      provider.setCustomParameters({ prompt: 'select_account' });
 
-    // 기존 설정이 있는지 확인
-    const existingSettings = await firestoreRepo.getUserSettings(user.uid);
-    
-    if (!existingSettings) {
-      // 첫 로그인이라면 초기 설정 생성
-      const initialSettings: UserSettings = {
-        user_id: user.uid,
-        email: user.email || "",
-        user_name: user.displayName || "농장 가족",
-        farm_name: "꿀송이농장",
-        latitude: 37.5665,
-        longitude: 126.9780,
-        location: "서울",
-        start_day: 0,
-        theme: 'light',
-        updated_at: Date.now()
-      };
-      await firestoreRepo.saveUserSettings(initialSettings);
-      return { user, settings: initialSettings };
+      const userCredential = await signInWithPopup(auth, provider);
+      const user = userCredential.user;
+      console.log("AuthService: Google Login Success, User:", user.uid);
+
+      // 기존 설정이 있는지 확인
+      const existingSettings = await firestoreRepo.getUserSettings(user.uid);
+
+      if (!existingSettings) {
+        console.log("AuthService: No existing settings found, creating initial settings...");
+        // 첫 로그인이라면 초기 설정 생성
+        const initialSettings: UserSettings = {
+          user_id: user.uid,
+          email: user.email || "",
+          user_name: user.displayName || "농장 가족",
+          farm_name: "꿀송이농장",
+          latitude: 37.5665,
+          longitude: 126.9780,
+          location: "문경시",
+          start_day: 0,
+          theme: 'light',
+          updated_at: Date.now()
+        };
+        await firestoreRepo.saveUserSettings(initialSettings);
+        return { user, settings: initialSettings };
+      }
+
+      console.log("AuthService: Existing settings loaded.");
+      return { user, settings: existingSettings };
+    } catch (error: any) {
+      console.error("AuthService: Google Login Error Details:", {
+        code: error.code,
+        message: error.message,
+        customData: error.customData
+      });
+      throw error; // 컴포넌트에서 처리하도록 다시 던짐
     }
+  }
 
-    return { user, settings: existingSettings };
+  /**
+   * 구글 로그인 (리다이렉트 방식) - 팝업 차단 시 사용
+   */
+  async loginWithGoogleRedirect() {
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    await signInWithRedirect(auth, provider);
+  }
+
+  /**
+   * 리다이렉트 결과 처리
+   */
+  async handleRedirectResult() {
+    try {
+      const result = await getRedirectResult(auth);
+      if (result) {
+        const user = result.user;
+        console.log("AuthService: Redirect login success:", user.uid);
+
+        const existingSettings = await firestoreRepo.getUserSettings(user.uid);
+        if (!existingSettings) {
+          const initialSettings: UserSettings = {
+            user_id: user.uid,
+            email: user.email || "",
+            user_name: user.displayName || "농장 가족",
+            farm_name: "꿀송이농장",
+            latitude: 37.5665,
+            longitude: 126.9780,
+            location: "문경시",
+            start_day: 0,
+            theme: 'light',
+            updated_at: Date.now()
+          };
+          await firestoreRepo.saveUserSettings(initialSettings);
+        }
+        return result;
+      }
+      return null;
+    } catch (error) {
+      console.error("AuthService: Redirect result error:", error);
+      throw error;
+    }
   }
 
   /**
    * 로그아웃
    */
   async logout() {
-    await signOut(auth);
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("AuthService: Logout Error:", error);
+      throw error;
+    }
   }
 
   /**
@@ -104,6 +171,13 @@ export class AuthService {
    */
   async updateSettings(settings: UserSettings) {
     await firestoreRepo.saveUserSettings(settings);
+  }
+
+  /**
+   * 사용자 설정 가져오기
+   */
+  async getSettings(uid: string) {
+    return await firestoreRepo.getUserSettings(uid);
   }
 }
 

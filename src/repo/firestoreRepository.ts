@@ -1,16 +1,17 @@
-import { 
-  collection, 
-  doc, 
-  getDoc, 
-  setDoc, 
-  getDocs, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  query, 
-  where, 
+import {
+  collection,
+  doc,
+  getDoc,
+  setDoc,
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
   orderBy,
-  Timestamp 
+  onSnapshot,
+  Timestamp
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Job, UserSettings } from "@/types";
@@ -27,11 +28,11 @@ export class FirestoreRepository {
   }
 
   // --- User Settings ---
-  
+
   async getUserSettings(uid: string): Promise<UserSettings | null> {
     const docRef = doc(this.settingsCol, uid);
     const docSnap = await getDoc(docRef);
-    
+
     if (docSnap.exists()) {
       return docSnap.data() as UserSettings;
     }
@@ -51,7 +52,7 @@ export class FirestoreRepository {
   async getJobs(date?: string): Promise<Job[]> {
     // 모든 유저의 데이터를 공유하므로 user_id 필터 제거
     let q = query(
-      this.jobsCol, 
+      this.jobsCol,
       orderBy("created_at", "asc")
     );
 
@@ -63,7 +64,7 @@ export class FirestoreRepository {
       if (jobDate instanceof Timestamp) {
         jobDate = jobDate.toDate().toISOString();
       }
-      
+
       return {
         id: doc.id,
         ...data,
@@ -75,8 +76,37 @@ export class FirestoreRepository {
     if (date) {
       return allJobs.filter(job => job.date.startsWith(date));
     }
-    
+
     return allJobs;
+  }
+
+  async subscribeJobs(callback: (jobs: Job[]) => void, date?: string): Promise<() => void> {
+    let q = query(
+      this.jobsCol,
+      orderBy("created_at", "asc")
+    );
+
+    return onSnapshot(q, (querySnapshot) => {
+      const allJobs = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        let jobDate = data.date;
+        if (jobDate instanceof Timestamp) {
+          jobDate = jobDate.toDate().toISOString();
+        }
+
+        return {
+          id: doc.id,
+          ...data,
+          date: jobDate
+        } as Job;
+      });
+
+      if (date) {
+        callback(allJobs.filter(job => job.date.startsWith(date)));
+      } else {
+        callback(allJobs);
+      }
+    });
   }
 
   async addJob(job: Omit<Job, "id" | "created_at">): Promise<string> {

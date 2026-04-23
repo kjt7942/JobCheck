@@ -11,7 +11,8 @@ import SettingsModal from "@/components/SettingsModal";
 import ConfirmModal from "@/components/ConfirmModal";
 import LoginView from "@/components/LoginView";
 import { useApp } from "@/providers/AppProvider";
-import { firestoreRepo } from "@/repo/firestoreRepository";
+import { jobService } from "@/services/jobService";
+import { authService } from "@/services/authService";
 import { Job, UserSettings } from "@/types";
 
 type Tab = "daily" | "weekly" | "monthly" | "yearly";
@@ -25,27 +26,26 @@ export default function Home() {
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
   const [isConfirmLogoutOpen, setIsConfirmLogoutOpen] = useState(false);
   const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
-  const [currentDate, setCurrentDate] = useState(new Date().toISOString().split('T')[0]);
-
-  const loadTasks = async () => {
-    if (!user) return;
-    setLoading(true);
-    try {
-      // 모든 사용자의 일정을 공유하여 가져옴
-      const data = await firestoreRepo.getJobs(currentDate);
-      setTasks(data);
-    } catch (e) {
-      console.error("Load tasks error:", e);
-      showToast("일정을 불러오는 중 오류가 발생했습니다.", "error");
-    }
-    setLoading(false);
-  };
 
   useEffect(() => {
-    if (user) {
-      loadTasks();
-    }
-  }, [user, currentDate]);
+    if (!user) return;
+
+    let unsubscribe: (() => void) | undefined;
+
+    const startSubscription = async () => {
+      setLoading(true);
+      unsubscribe = await jobService.subscribeJobs((data) => {
+        setTasks(data);
+        setLoading(false);
+      }); // 전체 일정을 실시간 구독
+    };
+
+    startSubscription();
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [user]);
 
   const handleSettingsSave = async (info: any) => {
     if (!user || !settings) return;
@@ -58,12 +58,12 @@ export default function Home() {
         theme: info.theme,
         updated_at: Date.now()
       };
-      
-      await firestoreRepo.saveUserSettings(newSettings);
-      
+
+      await authService.updateSettings(newSettings);
+
       // AppProvider의 상태 갱신 (전체 앱에 반영)
       await refreshSettings(user.uid);
-      
+
       setIsSettingsOpen(false);
       showToast("설정이 저장되었습니다.");
     } catch (e) {
@@ -75,7 +75,7 @@ export default function Home() {
   const handleAddTask = async (task: string, date: string, weather?: string, temp_max?: string | number, temp_min?: string | number, group_id?: string) => {
     if (!user) return;
     try {
-      await firestoreRepo.addJob({
+      await jobService.createJob({
         task,
         date,
         is_done: false,
@@ -86,7 +86,6 @@ export default function Home() {
         temp_min: typeof temp_min === 'string' ? parseFloat(temp_min) : temp_min,
       });
       showToast("새로운 일정이 등록되었습니다.");
-      loadTasks();
     } catch (e) {
       showToast("일정 등록에 실패했습니다.", "error");
     }
@@ -94,7 +93,7 @@ export default function Home() {
 
   const handleToggleTask = async (id: string, is_done: boolean) => {
     try {
-      await firestoreRepo.updateJob(id, { is_done });
+      await jobService.toggleTaskDone(id, is_done);
       setTasks(prev => prev.map(t => t.id === id ? { ...t, is_done } : t));
     } catch (e) {
       showToast("상태 변경에 실패했습니다.", "error");
@@ -116,7 +115,7 @@ export default function Home() {
     const originalTasks = [...tasks];
     setTasks((prev) => prev.filter(t => t.id !== id));
     try {
-      await firestoreRepo.deleteJob(id);
+      await jobService.deleteJob(id);
       showToast("일정이 삭제되었습니다.");
     } catch (e) {
       setTasks(originalTasks);
@@ -127,12 +126,12 @@ export default function Home() {
   const handleUpdateTask = async (id: string, updates: Partial<Job>) => {
     if (id.includes('.')) return;
     const originalTasks = [...tasks];
-    
+
     // UI 즉시 업데이트 (Optimistic Update)
     setTasks((prev) => prev.map(t => t.id === id ? { ...t, ...updates } : t));
-    
+
     try {
-      await firestoreRepo.updateJob(id, updates);
+      await jobService.updateJob(id, updates);
     } catch (e) {
       setTasks(originalTasks);
       showToast("수정에 실패했습니다.", "error");
@@ -153,15 +152,15 @@ export default function Home() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#f0f9f0]">
+      <div className="min-h-screen flex items-center justify-center bg-[var(--background)]">
         <div className="flex flex-col items-center gap-4">
           <Sprout className="w-12 h-12 text-green-600 animate-bounce" />
-          <p className="text-green-700 font-medium">꿀송이농장 준비 중...</p>
+          <p className="loading-text font-bold animate-pulse tracking-tight">꿀송이농장 준비 중...</p>
         </div>
       </div>
     );
   }
-  
+
   if (!user) {
     return <LoginView />;
   }
@@ -171,16 +170,18 @@ export default function Home() {
       {/* Header */}
       <header className="bg-[var(--header-bg)] backdrop-blur-md border-b border-[var(--card-border)] sticky top-0 z-50">
         <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
-          <button 
+          <button
             onClick={() => setActiveTab("daily")}
             className="flex items-center gap-2 text-green-700 hover:opacity-70 transition-opacity active:scale-95"
             title="일일 일정으로 이동"
           >
             <Sprout className="w-7 h-7" />
-            <h1 className="text-xl font-bold tracking-tight">{settings?.farm_name || "꿀송이농장"}</h1>
+            <h1 className="text-lg sm:text-xl font-bold tracking-tight">{settings?.farm_name || "꿀송이농장"}</h1>
           </button>
+
           <div className="flex items-center gap-2">
-            <div className="flex gap-1 bg-green-500/10 p-1 rounded-xl">
+            {/* Desktop Tabs */}
+            <div className="hidden md:flex gap-1 bg-green-500/10 p-1 rounded-xl">
               {tabs.map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
@@ -188,20 +189,19 @@ export default function Home() {
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as Tab)}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-                      isActive 
-                        ? "bg-[var(--card-bg)] text-green-600 shadow-sm border border-[var(--card-border)]" 
-                        : "text-gray-500 hover:text-green-600 hover:bg-green-500/10"
-                    }`}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${isActive
+                      ? "bg-[var(--card-bg)] text-green-600 shadow-sm border border-[var(--card-border)]"
+                      : "text-gray-500 hover:text-green-600 hover:bg-green-500/10"
+                      }`}
                   >
                     <Icon className="w-4 h-4" />
-                    <span className="hidden sm:inline">{tab.label}</span>
+                    <span>{tab.label}</span>
                   </button>
                 );
               })}
             </div>
-            
-            <button 
+
+            <button
               onClick={() => setIsSettingsOpen(true)}
               className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-500/10 rounded-xl transition-all"
               title="농장 설정"
@@ -212,16 +212,40 @@ export default function Home() {
         </div>
       </header>
 
-      <SettingsModal 
-        isOpen={isSettingsOpen} 
-        onClose={() => setIsSettingsOpen(false)} 
+      {/* Mobile Bottom Navigation */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-[var(--header-bg)] backdrop-blur-xl border-t border-[var(--card-border)] px-6 py-3 z-[100] flex items-center justify-between">
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as Tab)}
+              className={`flex flex-col items-center gap-1 transition-all duration-300 relative ${isActive ? "text-green-600" : "text-gray-400"
+                }`}
+            >
+              <div className={`p-1 rounded-xl transition-all ${isActive ? 'bg-green-500/10' : ''}`}>
+                <Icon className={`w-6 h-6 transition-transform ${isActive ? 'scale-110' : 'scale-100'}`} />
+              </div>
+              <span className="text-[10px] font-bold">{tab.label.replace(' 일정', '').replace(' 달력', '').replace(' 할일', '')}</span>
+              {isActive && (
+                <div className="absolute -top-3 w-1 h-1 bg-green-500 rounded-full" />
+              )}
+            </button>
+          );
+        })}
+      </nav>
+
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
         farmInfo={{
           name: settings?.farm_name ?? "꿀송이농장",
           region: settings?.location ?? "경상북도 문경시",
           weekStartsOn: (settings?.start_day as 0 | 1) ?? 1,
           theme: (settings?.theme as 'light' | 'dark') ?? 'light'
-        }} 
-        onSave={handleSettingsSave} 
+        }}
+        onSave={handleSettingsSave}
         onLogout={() => setIsConfirmLogoutOpen(true)}
       />
 
@@ -249,7 +273,7 @@ export default function Home() {
       />
 
       {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-4 py-8">
+      <main className="max-w-4xl mx-auto px-4 py-8 pb-24 md:pb-8">
         {loading && tasks.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-20 text-green-600 animate-pulse">
             <Sprout className="w-12 h-12 mb-4 animate-bounce" />
@@ -258,43 +282,43 @@ export default function Home() {
         ) : (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
             {activeTab === "daily" && (
-              <DailyView 
-                tasks={tasks} 
-                onAdd={handleAddTask} 
-                onToggle={handleToggleTask} 
-                onDelete={handleDeleteTask} 
+              <DailyView
+                tasks={tasks}
+                onAdd={handleAddTask}
+                onToggle={handleToggleTask}
+                onDelete={handleDeleteTask}
                 onUpdate={handleUpdateTask}
               />
             )}
             {activeTab === "weekly" && (
-              <WeeklyView 
-                tasks={tasks} 
+              <WeeklyView
+                tasks={tasks}
                 farmInfo={{
                   name: settings?.farm_name,
                   weekStartsOn: settings?.start_day
                 }}
-                onAdd={handleAddTask} 
-                onToggle={handleToggleTask} 
-                onDelete={handleDeleteTask} 
+                onAdd={handleAddTask}
+                onToggle={handleToggleTask}
+                onDelete={handleDeleteTask}
                 onUpdate={handleUpdateTask}
               />
             )}
             {activeTab === "monthly" && (
-              <MonthlyView 
-                tasks={tasks} 
+              <MonthlyView
+                tasks={tasks}
                 farmInfo={{
                   name: settings?.farm_name,
                   weekStartsOn: settings?.start_day
                 }}
-                onAdd={handleAddTask} 
-                onToggle={handleToggleTask} 
-                onDelete={handleDeleteTask} 
+                onAdd={handleAddTask}
+                onToggle={handleToggleTask}
+                onDelete={handleDeleteTask}
                 onUpdate={handleUpdateTask}
               />
             )}
             {activeTab === "yearly" && (
-              <YearlyView 
-                tasks={tasks} 
+              <YearlyView
+                tasks={tasks}
               />
             )}
           </div>

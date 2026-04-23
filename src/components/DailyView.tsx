@@ -144,7 +144,13 @@ export default function DailyView({
                 <ChevronLeft className="w-6 h-6" />
               </button>
               <div className="mx-1">
-                <h2 className="text-3xl font-bold text-[var(--foreground)] tracking-tight">Daily Schedule</h2>
+                <h2
+                  onClick={goToToday}
+                  className="text-3xl font-bold text-[var(--foreground)] tracking-tight cursor-pointer hover:text-green-600 transition-colors"
+                  title="오늘 날짜로 이동"
+                >
+                  Daily Schedule
+                </h2>
                 <p className="text-sm font-medium text-gray-400 mt-1 uppercase tracking-widest">
                   {format(viewDate, "yyyy. MM. dd eeee", { locale: ko })}
                 </p>
@@ -157,14 +163,6 @@ export default function DailyView({
                 <ChevronRight className="w-6 h-6" />
               </button>
             </div>
-            {!isSameDay(viewDate, new Date()) && (
-              <button
-                onClick={goToToday}
-                className="px-3 py-1 text-[10px] font-black bg-green-500/10 text-green-600 rounded-md hover:bg-green-500/20 transition-all border border-green-500/20"
-              >
-                오늘
-              </button>
-            )}
           </div>
           <div className="flex items-center gap-2">
             <div className="bg-[var(--input-bg)] rounded-full flex items-center px-4 py-2 border border-[var(--card-border)]">
@@ -319,12 +317,12 @@ export default function DailyView({
                       {/* Right Indicator & Actions */}
                       <div className="flex items-center gap-2">
                         {task.is_done ? (
-                          <div className="w-8 h-8 rounded-full bg-green-500/10 flex items-center justify-center">
-                            <Check className="w-4 h-4 text-green-500" />
+                          <div className="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center active-scale">
+                            <Check className="w-5 h-5 text-green-500" />
                           </div>
                         ) : (
                           <button
-                            className="w-8 h-8 rounded-full border-2 border-[var(--card-border)] group-hover:border-green-400 transition-colors flex items-center justify-center"
+                            className="w-10 h-10 rounded-full border-2 border-[var(--card-border)] group-hover:border-green-400 transition-colors flex items-center justify-center active-scale"
                             onClick={(e) => { e.stopPropagation(); onToggle(task.id!, true); }}
                           />
                         )}
@@ -550,9 +548,10 @@ export default function DailyView({
             <button
               type="submit"
               disabled={!newTitle.trim() || !startDate}
-              className="w-full bg-[var(--foreground)] hover:opacity-90 text-[var(--background)] text-sm font-bold py-3.5 rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-4 shadow-sm"
+              className="w-full bg-green-600 hover:bg-green-700 text-white text-sm font-bold py-3.5 rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-4 shadow-md shadow-green-600/20 active-scale"
             >
               일정 등록하기
+              <Plus className="w-4 h-4" />
             </button>
           </form>
         </div>
