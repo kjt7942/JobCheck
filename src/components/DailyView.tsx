@@ -235,7 +235,7 @@ export default function DailyView({
             </div>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-4 pb-10">
             {viewTasks.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 text-gray-400">
                 <div className="w-16 h-16 bg-[var(--input-bg)] rounded-full flex items-center justify-center mb-4">
@@ -476,7 +476,7 @@ export default function DailyView({
           </div>
 
           {/* Bottom Navigation Control */}
-          <div className="mt-auto pt-6 border-t border-[var(--card-border)] flex items-center justify-between">
+          <div className="mt-auto pt-8 border-t border-[var(--card-border)] flex items-center justify-between">
             <button
               onClick={goToPrevious}
               className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-gray-500 hover:text-green-600 hover:bg-green-500/10 rounded-xl transition-all group"
