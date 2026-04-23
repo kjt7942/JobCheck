@@ -72,7 +72,7 @@ export default function Home() {
     }
   };
 
-  const handleAddTask = async (task: string, date: string, weather?: string, temp_max?: string | number, temp_min?: string | number, group_id?: string) => {
+  const handleAddTask = async (task: string, date: string, weather?: string, temp_max?: string | number, temp_min?: string | number, group_id?: string, imageFiles?: File[]) => {
     if (!user) return;
     try {
       await jobService.createJob({
@@ -84,7 +84,7 @@ export default function Home() {
         weather: weather || "",
         temp_max: typeof temp_max === 'string' ? parseFloat(temp_max) : temp_max,
         temp_min: typeof temp_min === 'string' ? parseFloat(temp_min) : temp_min,
-      });
+      }, imageFiles);
       showToast("새로운 일정이 등록되었습니다.");
     } catch (e) {
       showToast("일정 등록에 실패했습니다.", "error");
@@ -123,7 +123,7 @@ export default function Home() {
     }
   };
 
-  const handleUpdateTask = async (id: string, updates: Partial<Job>) => {
+  const handleUpdateTask = async (id: string, updates: Partial<Job>, newImageFiles?: File[]) => {
     if (id.includes('.')) return;
     const originalTasks = [...tasks];
 
@@ -131,7 +131,7 @@ export default function Home() {
     setTasks((prev) => prev.map(t => t.id === id ? { ...t, ...updates } : t));
 
     try {
-      await jobService.updateJob(id, updates);
+      await jobService.updateJob(id, updates, newImageFiles);
     } catch (e) {
       setTasks(originalTasks);
       showToast("수정에 실패했습니다.", "error");

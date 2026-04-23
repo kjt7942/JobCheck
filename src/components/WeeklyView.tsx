@@ -1,6 +1,6 @@
 import { format, startOfWeek, addDays, isSameDay, addWeeks, subWeeks } from "date-fns";
 import { ko } from "date-fns/locale";
-import { Check, Circle, Trash2, CalendarDays, Edit2, X, Save, Clock, ChevronLeft, ChevronRight } from "lucide-react";
+import { Check, Circle, Trash2, CalendarDays, Edit2, X, Save, Clock, ChevronLeft, ChevronRight, Camera } from "lucide-react";
 import { useState } from "react";
 import { Job } from "@/types";
 import DatePicker from "react-datepicker";
@@ -171,8 +171,9 @@ export default function WeeklyView({
                             }
                           </button>
                           <div className="flex-1 min-w-0">
-                            <p className={`text-sm font-medium leading-tight truncate ${task.is_done ? "text-gray-400 line-through opacity-50" : "text-[var(--foreground)]"}`}>
+                            <p className={`text-sm font-medium leading-tight truncate flex items-center gap-1 ${task.is_done ? "text-gray-400 line-through opacity-50" : "text-[var(--foreground)]"}`}>
                               {task.task}
+                              {task.image_urls && task.image_urls.length > 0 && <Camera className="w-3 h-3 text-green-500 shrink-0" />}
                             </p>
                             <p className="text-[10px] text-gray-400 mt-1 font-mono">
                               {format(new Date(task.date), "HH:mm")}

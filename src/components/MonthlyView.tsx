@@ -2,7 +2,7 @@ import { useState } from "react";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths } from "date-fns";
 import { ko } from "date-fns/locale";
 import { Job } from "@/types";
-import { Plus, Check, Trash2, Clock, Calendar as CalendarIcon, CheckCircle2, ChevronLeft, ChevronRight, Activity, Search, Edit2, X, Save, Sun, CloudRain, Cloud, CloudSnow, RefreshCw, CalendarDays, CalendarRange } from "lucide-react";
+import { Plus, Check, Trash2, Clock, Calendar as CalendarIcon, CheckCircle2, ChevronLeft, ChevronRight, Activity, Search, Edit2, X, Save, Sun, CloudRain, Cloud, CloudSnow, RefreshCw, CalendarDays, CalendarRange, Camera } from "lucide-react";
 
 export default function MonthlyView({
   tasks,
@@ -120,6 +120,7 @@ export default function MonthlyView({
                     >
                       <div className="flex items-center justify-between gap-1 overflow-hidden">
                         <span className="truncate">{task.task}</span>
+                        {task.image_urls && task.image_urls.length > 0 && <Camera className="w-2 h-2 text-green-500 shrink-0" />}
                       </div>
                     </div>
                   ))}
@@ -176,6 +177,12 @@ export default function MonthlyView({
                   <p className="text-[10px] text-gray-400 flex items-center gap-1 mt-0.5">
                     <Clock className="w-3 h-3" />
                     {format(new Date(task.date), "HH:mm")}
+                    {task.image_urls && task.image_urls.length > 0 && (
+                      <span className="flex items-center gap-0.5 ml-1 text-green-500 font-bold">
+                        <Camera className="w-3 h-3" />
+                        {task.image_urls.length}
+                      </span>
+                    )}
                   </p>
                 </div>
                 {task.weather && (

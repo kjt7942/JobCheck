@@ -4,9 +4,10 @@ import { useState } from "react";
 import { format, isSameDay, addDays, subDays, addWeeks, subWeeks, addMonths } from "date-fns";
 import { ko } from "date-fns/locale";
 import { Job } from "@/types";
-import { Plus, Check, Trash2, Clock, Calendar as CalendarIcon, CheckCircle2, ChevronLeft, ChevronRight, Activity, Search, Edit2, X, Save, Sun, CloudRain, Cloud, CloudSnow, RefreshCw, CalendarDays } from "lucide-react";
+import { Plus, Check, Trash2, Clock, Calendar as CalendarIcon, CheckCircle2, ChevronLeft, ChevronRight, Activity, Search, Edit2, X, Save, Sun, CloudRain, Cloud, CloudSnow, RefreshCw, CalendarDays, Camera, Image as ImageIcon } from "lucide-react";
 import DatePicker, { registerLocale } from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
+import { compressImage } from "@/utils/imageUtils";
 
 registerLocale("ko", ko);
 
@@ -18,13 +19,17 @@ export default function DailyView({
   onUpdate,
 }: {
   tasks: Job[];
-  onAdd: (task: string, date: string, weather?: string, temp_max?: string | number, temp_min?: string | number, group_id?: string) => void;
+  onAdd: (task: string, date: string, weather?: string, temp_max?: string | number, temp_min?: string | number, group_id?: string, imageFiles?: File[]) => void;
   onToggle: (id: string, is_done: boolean) => void;
   onDelete: (id: string) => void;
-  onUpdate: (id: string, updates: Partial<Job>) => void;
+  onUpdate: (id: string, updates: Partial<Job>, newImageFiles?: File[]) => void;
 }) {
   const [newTitle, setNewTitle] = useState("");
   const [startDate, setStartDate] = useState<Date | null>(new Date());
+  
+  // 이미지 업로드 관련 상태
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
 
   // 날씨 수동 입력 상태 (등록 후 초기화하지 않음 - Sticky)
   const [manualWeather, setManualWeather] = useState("맑음");
@@ -37,8 +42,12 @@ export default function DailyView({
   const [editWeather, setEditWeather] = useState("");
   const [editTmx, setEditTmx] = useState<string>("");
   const [editTmn, setEditTmn] = useState<string>("");
+  const [editImageFiles, setEditImageFiles] = useState<File[]>([]);
+  const [editImagePreviews, setEditImagePreviews] = useState<string[]>([]);
+  const [editExistingUrls, setEditExistingUrls] = useState<string[]>([]);
 
   const [viewDate, setViewDate] = useState(new Date());
+  const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null);
 
   // 반복 일정 관련 상태
   const [isRecurring, setIsRecurring] = useState(false);
@@ -58,19 +67,55 @@ export default function DailyView({
   const goToNext = () => setViewDate(prev => addDays(prev, 1));
   const goToToday = () => setViewDate(new Date());
 
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean = false) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    // 이미지 압축 및 처리
+    const compressedFiles = await Promise.all(
+      files.map(file => compressImage(file))
+    );
+
+    const newPreviews = compressedFiles.map(file => URL.createObjectURL(file));
+
+    if (isEdit) {
+      setEditImageFiles(prev => [...prev, ...compressedFiles]);
+      setEditImagePreviews(prev => [...prev, ...newPreviews]);
+    } else {
+      setImageFiles(prev => [...prev, ...compressedFiles]);
+      setImagePreviews(prev => [...prev, ...newPreviews]);
+    }
+  };
+
+  const removeImage = (index: number, isEdit: boolean = false) => {
+    if (isEdit) {
+      setEditImageFiles(prev => prev.filter((_, i) => i !== index));
+      URL.revokeObjectURL(editImagePreviews[index]);
+      setEditImagePreviews(prev => prev.filter((_, i) => i !== index));
+    } else {
+      setImageFiles(prev => prev.filter((_, i) => i !== index));
+      URL.revokeObjectURL(imagePreviews[index]);
+      setImagePreviews(prev => prev.filter((_, i) => i !== index));
+    }
+  };
+
+  const removeExistingImage = (url: string) => {
+    setEditExistingUrls(prev => prev.filter(u => u !== url));
+  };
+
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim() || !startDate) return;
 
     if (!isRecurring) {
-      onAdd(newTitle.trim(), startDate.toISOString(), manualWeather, tmx, tmn);
+      onAdd(newTitle.trim(), startDate.toISOString(), manualWeather, tmx, tmn, undefined, imageFiles);
     } else {
       const gid = `rec_${Date.now()}`;
       let currentDate = new Date(startDate);
       const endDate = recurrenceEndDate;
 
       while (currentDate <= endDate) {
-        onAdd(newTitle.trim(), currentDate.toISOString(), manualWeather, tmx, tmn, gid);
+        onAdd(newTitle.trim(), currentDate.toISOString(), manualWeather, tmx, tmn, gid, imageFiles);
 
         // 주기 계산
         if (recurrenceType === "DAILY") currentDate = addDays(currentDate, 1);
@@ -85,6 +130,8 @@ export default function DailyView({
     }
 
     setNewTitle("");
+    setImageFiles([]);
+    setImagePreviews([]);
     setIsRecurring(false); // 등록 후 반복 설정은 초기화
   };
 
@@ -95,6 +142,9 @@ export default function DailyView({
     setEditWeather(job.weather || "맑음");
     setEditTmx(job.temp_max ? String(job.temp_max) : "");
     setEditTmn(job.temp_min ? String(job.temp_min) : "");
+    setEditImageFiles([]);
+    setEditImagePreviews([]);
+    setEditExistingUrls(job.image_urls || []);
   };
 
   const cancelEdit = () => {
@@ -104,6 +154,9 @@ export default function DailyView({
     setEditWeather("");
     setEditTmx("");
     setEditTmn("");
+    setEditImageFiles([]);
+    setEditImagePreviews([]);
+    setEditExistingUrls([]);
   };
 
   const handleSaveEdit = (id: string) => {
@@ -114,7 +167,8 @@ export default function DailyView({
       weather: editWeather,
       temp_max: editTmx ? parseFloat(editTmx) : undefined,
       temp_min: editTmn ? parseFloat(editTmn) : undefined,
-    });
+      image_urls: editExistingUrls
+    }, editImageFiles);
     setEditingId(null);
   };
 
@@ -256,6 +310,59 @@ export default function DailyView({
                             </div>
                           </div>
                         </div>
+
+                        {/* Edit Mode Image Upload */}
+                        <div className="mt-3 space-y-2">
+                          <div className="flex flex-wrap gap-2">
+                            {/* 기존 이미지 목록 */}
+                            {editExistingUrls.map((url, idx) => (
+                              <div key={`existing-${idx}`} className="relative w-12 h-12 rounded-lg overflow-hidden border border-[var(--card-border)] group">
+                                <img 
+                                  src={url} 
+                                  alt="기존 이미지" 
+                                  className="w-full h-full object-cover cursor-pointer hover:opacity-80 transition-opacity" 
+                                  onClick={() => setSelectedImageUrl(url)}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => removeExistingImage(url)}
+                                  className="absolute top-0.5 right-0.5 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                                >
+                                  <X className="w-2 h-2" />
+                                </button>
+                              </div>
+                            ))}
+                            
+                            {/* 신규 추가 이미지 미리보기 */}
+                            {editImagePreviews.map((url, idx) => (
+                              <div key={`new-${idx}`} className="relative w-12 h-12 rounded-lg overflow-hidden border border-green-500/20 group">
+                                <img 
+                                  src={url} 
+                                  alt="신규 미리보기" 
+                                  className="w-full h-full object-cover cursor-pointer hover:opacity-80 transition-opacity" 
+                                  onClick={() => setSelectedImageUrl(url)}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => removeImage(idx, true)}
+                                  className="absolute top-0.5 right-0.5 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                                >
+                                  <X className="w-2 h-2" />
+                                </button>
+                              </div>
+                            ))}
+                            <label className="w-12 h-12 flex flex-col items-center justify-center rounded-lg border border-dashed border-[var(--card-border)] hover:border-green-500/50 hover:bg-green-500/5 transition-all cursor-pointer">
+                              <Camera className="w-4 h-4 text-gray-400" />
+                              <input
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                className="hidden"
+                                onChange={(e) => handleImageChange(e, true)}
+                              />
+                            </label>
+                          </div>
+                        </div>
                       </div>
                       <div className="flex items-center gap-2 self-end sm:self-center">
                         <button
@@ -282,6 +389,22 @@ export default function DailyView({
                           }`}>
                           {task.task}
                         </h4>
+
+                        {/* Image Gallery in List */}
+                        {task.image_urls && task.image_urls.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {task.image_urls.map((url, idx) => (
+                              <div key={idx} className="relative w-16 h-16 rounded-xl overflow-hidden border border-[var(--card-border)] group/img">
+                                <img 
+                                  src={url} 
+                                  alt={`첨부이미지 ${idx+1}`} 
+                                  className="w-full h-full object-cover cursor-pointer hover:scale-110 transition-transform"
+                                  onClick={() => setSelectedImageUrl(url)}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        )}
                         <div className="flex flex-wrap items-center gap-2 mt-1">
                           <span className="flex items-center gap-1 text-[10px] font-mono text-gray-400 bg-[var(--input-bg)] px-1.5 py-0.5 rounded shrink-0">
                             <Clock className="w-3 h-3" />
@@ -547,6 +670,41 @@ export default function DailyView({
               </div>
             </div>
 
+            {/* 📸 Image Upload Section */}
+            <div className="space-y-2 pt-2 border-t border-[var(--card-border)]">
+              <label className="text-xs font-semibold text-gray-500 uppercase flex items-center justify-between">
+                <span>사진 첨부 (무제한)</span>
+                <span className="text-[10px] text-green-600 normal-case">{imageFiles.length}장 선택됨</span>
+              </label>
+              
+              <div className="flex flex-wrap gap-2">
+                {imagePreviews.map((url, idx) => (
+                  <div key={idx} className="relative w-20 h-20 rounded-xl overflow-hidden border-2 border-green-500/20 group">
+                    <img src={url} alt="미리보기" className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => removeImage(idx)}
+                      className="absolute top-1 right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+                
+                <label className="w-20 h-20 flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-[var(--card-border)] hover:border-green-500/50 hover:bg-green-500/5 transition-all cursor-pointer group">
+                  <Camera className="w-6 h-6 text-gray-400 group-hover:text-green-500 transition-colors" />
+                  <span className="text-[10px] text-gray-400 group-hover:text-green-500 mt-1 font-bold">추가</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => handleImageChange(e)}
+                  />
+                </label>
+              </div>
+            </div>
+
             <button
               type="submit"
               disabled={!newTitle.trim() || !startDate}
@@ -577,6 +735,29 @@ export default function DailyView({
           </div>
         </div>
       </div>
+
+      {/* 🖼️ Image Modal */}
+      {selectedImageUrl && (
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-300"
+          onClick={() => setSelectedImageUrl(null)}
+        >
+          <div className="relative max-w-4xl w-full h-full flex items-center justify-center">
+            <button 
+              className="absolute top-4 right-4 z-[110] p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all"
+              onClick={() => setSelectedImageUrl(null)}
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <img 
+              src={selectedImageUrl} 
+              alt="확대 이미지" 
+              className="max-w-full max-h-full object-contain rounded-lg shadow-2xl animate-in zoom-in-95 duration-300"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
+import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -20,6 +21,7 @@ const app = getApps().length > 0
 // 서비스 인스턴스 내보내기 (app이 없을 경우 null 대비)
 export const db = app ? getFirestore(app) : null as any;
 export const auth = app ? getAuth(app) : null as any;
+export const storage = app ? getStorage(app) : null as any;
 
 if (!firebaseConfig.apiKey) {
   console.warn("⚠️ Firebase API Key가 누락되었습니다. Vercel 환경 변수 설정을 확인해주세요.");

@@ -11,6 +11,7 @@ export interface Job {
   temp_max?: number;    // 최고 기온
   temp_min?: number;    // 최저 기온
   weather?: string;     // 날씨 설명 (맑음, 흐림 등)
+  image_urls?: string[]; // 첨부된 이미지 URL 리스트
   created_at: number;   // 생성 시간 (timestamp)
 }
 
