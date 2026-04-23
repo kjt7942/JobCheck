@@ -277,20 +277,20 @@ export default function DailyView({
                   ) : (
                     <>
                       {/* Task Content */}
-                      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onToggle(task.id!, !task.is_done)}>
+                      <div className="flex-1 min-w-0 py-1">
                         <h4 className={`font-bold transition-all duration-300 truncate ${task.is_done ? "text-gray-400 line-through decoration-2" : "text-[var(--foreground)]"
                           }`}>
                           {task.task}
                         </h4>
-                        <div className="flex items-center gap-3 mt-1">
-                          <span className="flex items-center gap-1 text-[10px] font-mono text-gray-400 bg-[var(--input-bg)] px-1.5 py-0.5 rounded">
+                        <div className="flex flex-wrap items-center gap-2 mt-1">
+                          <span className="flex items-center gap-1 text-[10px] font-mono text-gray-400 bg-[var(--input-bg)] px-1.5 py-0.5 rounded shrink-0">
                             <Clock className="w-3 h-3" />
                             {format(new Date(task.date), "HH:mm")}
                           </span>
 
                           {/* Weather Info Display */}
                           {(task.weather || (task.temp_max !== undefined && task.temp_max !== null) || (task.temp_min !== undefined && task.temp_min !== null)) && (
-                            <div className="flex items-center gap-2 text-[10px] text-green-600 font-medium bg-green-500/10 px-1.5 py-0.5 rounded">
+                            <div className="flex items-center gap-1.5 text-[10px] text-green-600 font-medium bg-green-500/10 px-1.5 py-0.5 rounded whitespace-nowrap overflow-hidden">
                               {task.weather && (
                                 <span className="flex items-center gap-1">
                                   {task.weather.includes("맑음") ? <Sun className="w-3 h-3" /> :
@@ -303,10 +303,10 @@ export default function DailyView({
                                 </span>
                               )}
                               {(task.temp_max !== undefined || task.temp_min !== undefined) && (
-                                <span className="flex items-center gap-1 border-l border-green-500/20 pl-2">
-                                  <span className="text-red-400">{task.temp_max}℃</span>
-                                  <span className="text-gray-400">/</span>
-                                  <span className="text-blue-400">{task.temp_min}℃</span>
+                                <span className="flex items-center gap-1 border-l border-green-500/20 pl-1.5">
+                                  <span className="text-red-400 hover:scale-110 transition-transform cursor-help">{task.temp_max}℃</span>
+                                  <span className="text-gray-400 opacity-50">/</span>
+                                  <span className="text-blue-400 hover:scale-110 transition-transform cursor-help">{task.temp_min}℃</span>
                                 </span>
                               )}
                             </div>
@@ -315,29 +315,31 @@ export default function DailyView({
                       </div>
 
                       {/* Right Indicator & Actions */}
-                      <div className="flex items-center gap-2">
-                        {task.is_done ? (
-                          <div className="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center active-scale">
-                            <Check className="w-5 h-5 text-green-500" />
-                          </div>
-                        ) : (
-                          <button
-                            className="w-10 h-10 rounded-full border-2 border-[var(--card-border)] group-hover:border-green-400 transition-colors flex items-center justify-center active-scale"
-                            onClick={(e) => { e.stopPropagation(); onToggle(task.id!, true); }}
-                          />
-                        )}
+                      <div className="flex items-center gap-2 px-1">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onToggle(task.id!, !task.is_done); }}
+                          className={`w-10 h-10 rounded-full flex items-center justify-center transition-all active-scale shrink-0 ${task.is_done
+                              ? "bg-green-500/10 border-transparent shadow-inner"
+                              : "bg-[var(--card-bg)] border-2 border-[var(--card-border)] hover:border-green-400 shadow-sm"
+                            }`}
+                          title={task.is_done ? "미완료로 표시" : "완료로 표시"}
+                        >
+                          {task.is_done ? (
+                            <Check className="w-5 h-5 text-green-500 animate-in zoom-in-50 duration-200" />
+                          ) : null}
+                        </button>
 
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                        <div className="flex flex-col sm:flex-row items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
                           <button
                             onClick={(e) => { e.stopPropagation(); startEdit(task); }}
-                            className="p-1 text-gray-400 hover:text-green-500 hover:bg-green-500/10 rounded-lg transition-all"
+                            className="p-1.5 text-gray-400 hover:text-green-500 hover:bg-green-500/10 rounded-lg transition-all"
                             title="수정"
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button
                             onClick={(e) => { e.stopPropagation(); onDelete(task.id!); }}
-                            className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
                             title="삭제"
                           >
                             <Trash2 className="w-4 h-4" />
