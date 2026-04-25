@@ -41,10 +41,14 @@ export default function SettingsModal({ isOpen, onClose, farmInfo: initialInfo, 
       weekStartsOn: initialInfo.weekStartsOn ?? 1,
       theme: initialInfo.theme ?? 'light'
     });
+  }, [initialInfo]);
 
-    // 모달이 열릴 때 일반 탭으로 초기화
-    if (isOpen) setActiveTab('general');
-  }, [initialInfo, isOpen]);
+  // 모달이 새로 열릴 때만 탭을 'general'로 초기화
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab('general');
+    }
+  }, [isOpen]);
 
   // 사용자 리스트 로드 및 알림 읽음 처리
   useEffect(() => {
