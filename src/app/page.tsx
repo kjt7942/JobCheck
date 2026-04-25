@@ -13,6 +13,7 @@ import LoginView from "@/components/LoginView";
 import { useApp } from "@/providers/AppProvider";
 import { jobService } from "@/services/jobService";
 import { authService } from "@/services/authService";
+import { firestoreRepo } from "@/repo/firestoreRepository";
 import { Job, UserSettings } from "@/types";
 
 type Tab = "daily" | "weekly" | "monthly" | "yearly";
@@ -26,26 +27,45 @@ export default function Home() {
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
   const [isConfirmLogoutOpen, setIsConfirmLogoutOpen] = useState(false);
   const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || authLoading) return;
 
-    let unsubscribe: (() => void) | undefined;
+    // 권한 체크: 관리자이거나 읽기 권한이 있을 때만 구독 시작
+    const canRead = settings?.role === 'admin' || settings?.permissions?.canRead;
+
+    if (!canRead) {
+      setTasks([]);
+      setLoading(false);
+      return;
+    }
+
+    let unsubscribeJobs: (() => void) | undefined;
+    let unsubscribeNotifs: (() => void) | undefined;
 
     const startSubscription = async () => {
       setLoading(true);
-      unsubscribe = await jobService.subscribeJobs((data) => {
+      unsubscribeJobs = await jobService.subscribeJobs((data) => {
         setTasks(data);
         setLoading(false);
       }); // 전체 일정을 실시간 구독
+
+      // 관리자라면 알림 구독 추가
+      if (settings?.role === 'admin') {
+        unsubscribeNotifs = firestoreRepo.subscribeUnreadCount((count: number) => {
+          setUnreadCount(count);
+        });
+      }
     };
 
     startSubscription();
 
     return () => {
-      if (unsubscribe) unsubscribe();
+      if (unsubscribeJobs) unsubscribeJobs();
+      if (unsubscribeNotifs) unsubscribeNotifs();
     };
-  }, [user]);
+  }, [user, settings, authLoading]);
 
   const handleSettingsSave = async (info: any) => {
     if (!user || !settings) return;
@@ -74,6 +94,14 @@ export default function Home() {
 
   const handleAddTask = async (task: string, date: string, weather?: string, temp_max?: string | number, temp_min?: string | number, group_id?: string, imageFiles?: File[]) => {
     if (!user) return;
+
+    // 권한 체크
+    const canWrite = settings?.role === 'admin' || settings?.permissions?.canWrite;
+    if (!canWrite) {
+      showToast("일정을 등록할 권한이 없습니다.", "error");
+      return;
+    }
+
     try {
       await jobService.createJob({
         task,
@@ -92,6 +120,13 @@ export default function Home() {
   };
 
   const handleToggleTask = async (id: string, is_done: boolean) => {
+    // 권한 체크
+    const canWrite = settings?.role === 'admin' || settings?.permissions?.canWrite;
+    if (!canWrite) {
+      showToast("수정 권한이 없습니다.", "error");
+      return;
+    }
+
     try {
       await jobService.toggleTaskDone(id, is_done);
       setTasks(prev => prev.map(t => t.id === id ? { ...t, is_done } : t));
@@ -102,12 +137,30 @@ export default function Home() {
 
   const handleDeleteTask = (id: string) => {
     if (id.includes('.')) return;
+
+    // 권한 체크
+    const canDelete = settings?.role === 'admin' || settings?.permissions?.canDelete;
+    if (!canDelete) {
+      showToast("삭제 권한이 없습니다.", "error");
+      return;
+    }
+
     setTaskToDelete(id);
     setIsConfirmDeleteOpen(true);
   };
 
   const executeDeleteTask = async () => {
     if (!taskToDelete) return;
+
+    // 최종 권한 체크 (재확인)
+    const canDelete = settings?.role === 'admin' || settings?.permissions?.canDelete;
+    if (!canDelete) {
+      showToast("삭제 권한이 없습니다.", "error");
+      setIsConfirmDeleteOpen(false);
+      setTaskToDelete(null);
+      return;
+    }
+
     const id = taskToDelete;
     setIsConfirmDeleteOpen(false);
     setTaskToDelete(null);
@@ -125,6 +178,14 @@ export default function Home() {
 
   const handleUpdateTask = async (id: string, updates: Partial<Job>, newImageFiles?: File[]) => {
     if (id.includes('.')) return;
+
+    // 권한 체크
+    const canWrite = settings?.role === 'admin' || settings?.permissions?.canWrite;
+    if (!canWrite) {
+      showToast("수정 권한이 없습니다.", "error");
+      return;
+    }
+
     const originalTasks = [...tasks];
 
     // UI 즉시 업데이트 (Optimistic Update)
@@ -201,13 +262,18 @@ export default function Home() {
               })}
             </div>
 
-            <button
-              onClick={() => setIsSettingsOpen(true)}
-              className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-500/10 rounded-xl transition-all"
-              title="농장 설정"
-            >
-              <Settings className="w-5 h-5" />
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => setIsSettingsOpen(true)}
+                className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-500/10 rounded-xl transition-all"
+                title="농장 설정"
+              >
+                <Settings className="w-5 h-5" />
+              </button>
+              {unreadCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white animate-pulse" />
+              )}
+            </div>
           </div>
         </div>
       </header>
@@ -247,6 +313,7 @@ export default function Home() {
         }}
         onSave={handleSettingsSave}
         onLogout={() => setIsConfirmLogoutOpen(true)}
+        unreadCount={unreadCount}
       />
 
       <ConfirmModal
@@ -274,13 +341,30 @@ export default function Home() {
 
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 py-8 pb-24 md:pb-8">
-        {loading && tasks.length === 0 ? (
+        {!settings?.permissions?.canRead && settings?.role !== 'admin' ? (
+          <div className="flex flex-col items-center justify-center p-20 text-center animate-in fade-in duration-500">
+            <div className="p-6 bg-orange-500/10 rounded-[32px] mb-6">
+              <Settings className="w-12 h-12 text-orange-500 animate-pulse" />
+            </div>
+            <h3 className="text-xl font-bold mb-2">접근 권한이 없습니다</h3>
+            <p className="text-gray-500 text-sm max-w-xs leading-relaxed">
+              농장 일정을 보기 위해서는 관리자의 승인이 필요합니다. <br />
+              관리자에게 문의해 주세요.
+            </p>
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="mt-8 px-8 py-4 bg-[var(--card-bg)] border border-[var(--card-border)] rounded-2xl text-sm font-bold text-gray-500 hover:bg-gray-50 transition-all"
+            >
+              설정 확인
+            </button>
+          </div>
+        ) : loading && tasks.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-20 text-green-600 animate-pulse">
             <Sprout className="w-12 h-12 mb-4 animate-bounce" />
             <p>자라나는 일정을 불러오고 있습니다...</p>
           </div>
         ) : (
-          <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+          <div className="space-y-6">
             {activeTab === "daily" && (
               <DailyView
                 tasks={tasks}
@@ -288,34 +372,43 @@ export default function Home() {
                 onToggle={handleToggleTask}
                 onDelete={handleDeleteTask}
                 onUpdate={handleUpdateTask}
+                canWrite={settings?.role === 'admin' || settings?.permissions?.canWrite}
+                canDelete={settings?.role === 'admin' || settings?.permissions?.canDelete}
               />
             )}
+
             {activeTab === "weekly" && (
               <WeeklyView
                 tasks={tasks}
                 farmInfo={{
                   name: settings?.farm_name,
-                  weekStartsOn: settings?.start_day
+                  weekStartsOn: settings?.start_day ?? 1
                 }}
                 onAdd={handleAddTask}
                 onToggle={handleToggleTask}
                 onDelete={handleDeleteTask}
                 onUpdate={handleUpdateTask}
+                canWrite={settings?.role === 'admin' || settings?.permissions?.canWrite}
+                canDelete={settings?.role === 'admin' || settings?.permissions?.canDelete}
               />
             )}
+
             {activeTab === "monthly" && (
               <MonthlyView
                 tasks={tasks}
                 farmInfo={{
                   name: settings?.farm_name,
-                  weekStartsOn: settings?.start_day
+                  weekStartsOn: settings?.start_day ?? 1
                 }}
                 onAdd={handleAddTask}
                 onToggle={handleToggleTask}
                 onDelete={handleDeleteTask}
                 onUpdate={handleUpdateTask}
+                canWrite={settings?.role === 'admin' || settings?.permissions?.canWrite}
+                canDelete={settings?.role === 'admin' || settings?.permissions?.canDelete}
               />
             )}
+
             {activeTab === "yearly" && (
               <YearlyView
                 tasks={tasks}

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { format, isSameDay, addDays, subDays, addWeeks, subWeeks, addMonths } from "date-fns";
 import { ko } from "date-fns/locale";
 import { Job } from "@/types";
-import { Plus, Check, Trash2, Clock, Calendar as CalendarIcon, CheckCircle2, ChevronLeft, ChevronRight, Activity, Search, Edit2, X, Save, Sun, CloudRain, Cloud, CloudSnow, RefreshCw, CalendarDays, Camera, Image as ImageIcon } from "lucide-react";
+import { Plus, Check, Trash2, Clock, Calendar as CalendarIcon, CheckCircle2, ChevronLeft, ChevronRight, Activity, Search, Edit2, X, Save, Sun, CloudRain, Cloud, CloudSnow, RefreshCw, CalendarDays, Camera, Image as ImageIcon, Lock as LockIcon } from "lucide-react";
 import DatePicker, { registerLocale } from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { compressImage } from "@/utils/imageUtils";
@@ -17,16 +17,20 @@ export default function DailyView({
   onToggle,
   onDelete,
   onUpdate,
+  canWrite = false,
+  canDelete = false,
 }: {
   tasks: Job[];
   onAdd: (task: string, date: string, weather?: string, temp_max?: string | number, temp_min?: string | number, group_id?: string, imageFiles?: File[]) => void;
   onToggle: (id: string, is_done: boolean) => void;
   onDelete: (id: string) => void;
   onUpdate: (id: string, updates: Partial<Job>, newImageFiles?: File[]) => void;
+  canWrite?: boolean;
+  canDelete?: boolean;
 }) {
   const [newTitle, setNewTitle] = useState("");
   const [startDate, setStartDate] = useState<Date | null>(new Date());
-  
+
   // 이미지 업로드 관련 상태
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
@@ -317,10 +321,10 @@ export default function DailyView({
                             {/* 기존 이미지 목록 */}
                             {editExistingUrls.map((url, idx) => (
                               <div key={`existing-${idx}`} className="relative w-12 h-12 rounded-lg overflow-hidden border border-[var(--card-border)] group">
-                                <img 
-                                  src={url} 
-                                  alt="기존 이미지" 
-                                  className="w-full h-full object-cover cursor-pointer hover:opacity-80 transition-opacity" 
+                                <img
+                                  src={url}
+                                  alt="기존 이미지"
+                                  className="w-full h-full object-cover cursor-pointer hover:opacity-80 transition-opacity"
                                   onClick={() => setSelectedImageUrl(url)}
                                 />
                                 <button
@@ -332,14 +336,14 @@ export default function DailyView({
                                 </button>
                               </div>
                             ))}
-                            
+
                             {/* 신규 추가 이미지 미리보기 */}
                             {editImagePreviews.map((url, idx) => (
                               <div key={`new-${idx}`} className="relative w-12 h-12 rounded-lg overflow-hidden border border-green-500/20 group">
-                                <img 
-                                  src={url} 
-                                  alt="신규 미리보기" 
-                                  className="w-full h-full object-cover cursor-pointer hover:opacity-80 transition-opacity" 
+                                <img
+                                  src={url}
+                                  alt="신규 미리보기"
+                                  className="w-full h-full object-cover cursor-pointer hover:opacity-80 transition-opacity"
                                   onClick={() => setSelectedImageUrl(url)}
                                 />
                                 <button
@@ -395,9 +399,9 @@ export default function DailyView({
                           <div className="flex flex-wrap gap-2 mt-2">
                             {task.image_urls.map((url, idx) => (
                               <div key={idx} className="relative w-16 h-16 rounded-xl overflow-hidden border border-[var(--card-border)] group/img">
-                                <img 
-                                  src={url} 
-                                  alt={`첨부이미지 ${idx+1}`} 
+                                <img
+                                  src={url}
+                                  alt={`첨부이미지 ${idx + 1}`}
                                   className="w-full h-full object-cover cursor-pointer hover:scale-110 transition-transform"
                                   onClick={() => setSelectedImageUrl(url)}
                                 />
@@ -440,11 +444,15 @@ export default function DailyView({
                       {/* Right Indicator & Actions */}
                       <div className="flex items-center gap-2 px-1">
                         <button
-                          onClick={(e) => { e.stopPropagation(); onToggle(task.id!, !task.is_done); }}
-                          className={`w-10 h-10 rounded-full flex items-center justify-center transition-all active-scale shrink-0 ${task.is_done
-                              ? "bg-green-500/10 border-transparent shadow-inner"
-                              : "bg-[var(--card-bg)] border-2 border-[var(--card-border)] hover:border-green-400 shadow-sm"
-                            }`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (canWrite) onToggle(task.id!, !task.is_done);
+                          }}
+                          disabled={!canWrite}
+                          className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shrink-0 ${task.is_done
+                            ? "bg-green-500/10 border-transparent shadow-inner"
+                            : "bg-[var(--card-bg)] border-2 border-[var(--card-border)] hover:border-green-400 shadow-sm"
+                            } ${!canWrite ? 'cursor-default opacity-50' : 'active-scale'}`}
                           title={task.is_done ? "미완료로 표시" : "완료로 표시"}
                         >
                           {task.is_done ? (
@@ -453,20 +461,24 @@ export default function DailyView({
                         </button>
 
                         <div className="flex flex-col sm:flex-row items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); startEdit(task); }}
-                            className="p-1.5 text-gray-400 hover:text-green-500 hover:bg-green-500/10 rounded-lg transition-all"
-                            title="수정"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); onDelete(task.id!); }}
-                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
-                            title="삭제"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {canWrite && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); startEdit(task); }}
+                              className="p-1.5 text-gray-400 hover:text-green-500 hover:bg-green-500/10 rounded-lg transition-all"
+                              title="수정"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); onDelete(task.id!); }}
+                              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                              title="삭제"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </div>
                     </>
@@ -509,212 +521,219 @@ export default function DailyView({
       <div className="lg:col-span-4 space-y-6">
 
         {/* Add New Task Widget */}
-        <div className="bg-[var(--card-bg)] rounded-[24px] shadow-sm border border-[var(--card-border)] p-6">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-gray-400 mb-6 font-sans">
-            Add New Task
-          </h3>
-          <form onSubmit={handleAdd} className="space-y-5">
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-gray-500 uppercase">일정 내용</label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={newTitle}
-                  onChange={(e) => setNewTitle(e.target.value)}
-                  placeholder="예: 과수원 물주기"
-                  className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-sm text-[var(--foreground)] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-400/20 focus:border-green-500 transition-all"
+        {canWrite ? (
+          <div className="bg-[var(--card-bg)] rounded-[24px] shadow-sm border border-[var(--card-border)] p-6">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-gray-400 mb-6 font-sans">
+              Add New Task
+            </h3>
+            <form onSubmit={handleAdd} className="space-y-5">
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-gray-500 uppercase">일정 내용</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={newTitle}
+                    onChange={(e) => setNewTitle(e.target.value)}
+                    placeholder="예: 과수원 물주기"
+                    className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-sm text-[var(--foreground)] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-400/20 focus:border-green-500 transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-gray-500 uppercase">시간 설정</label>
+                <DatePicker
+                  selected={startDate}
+                  onChange={(date: Date | null) => setStartDate(date)}
+                  showTimeSelect
+                  timeFormat="HH:mm"
+                  timeIntervals={15}
+                  dateFormat="yyyy.MM.dd HH:mm"
+                  locale="ko"
+                  className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-sm text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all cursor-pointer"
+                  wrapperClassName="w-full"
                 />
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-gray-500 uppercase">시간 설정</label>
-              <DatePicker
-                selected={startDate}
-                onChange={(date: Date | null) => setStartDate(date)}
-                showTimeSelect
-                timeFormat="HH:mm"
-                timeIntervals={15}
-                dateFormat="yyyy.MM.dd HH:mm"
-                locale="ko"
-                className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-sm text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all cursor-pointer"
-                wrapperClassName="w-full"
-              />
-            </div>
+              {/* 🔄 Recurrence Settings */}
+              <div className="pt-4 border-t border-[var(--card-border)] space-y-4">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-2 cursor-pointer group">
+                    <div className={`w-10 h-6 rounded-full transition-all relative ${isRecurring ? 'bg-green-600' : 'bg-[var(--input-bg)]'}`}>
+                      <input
+                        type="checkbox"
+                        className="hidden"
+                        checked={isRecurring}
+                        onChange={(e) => setIsRecurring(e.target.checked)}
+                      />
+                      <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${isRecurring ? 'left-5' : 'left-1'}`} />
+                    </div>
+                    <span className="text-xs font-bold text-gray-500 uppercase">반복 일정 사용</span>
+                  </label>
+                  {isRecurring && <RefreshCw className="w-4 h-4 text-green-500 animate-spin-slow" />}
+                </div>
 
-            {/* 🔄 Recurrence Settings */}
-            <div className="pt-4 border-t border-[var(--card-border)] space-y-4">
-              <div className="flex items-center justify-between">
-                <label className="flex items-center gap-2 cursor-pointer group">
-                  <div className={`w-10 h-6 rounded-full transition-all relative ${isRecurring ? 'bg-green-600' : 'bg-[var(--input-bg)]'}`}>
-                    <input
-                      type="checkbox"
-                      className="hidden"
-                      checked={isRecurring}
-                      onChange={(e) => setIsRecurring(e.target.checked)}
-                    />
-                    <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${isRecurring ? 'left-5' : 'left-1'}`} />
+                {isRecurring && (
+                  <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
+                    <div className="grid grid-cols-5 gap-1">
+                      {[
+                        { label: '매일', value: 'DAILY' },
+                        { label: '매주', value: 'WEEKLY' },
+                        { label: '격주', value: 'BIWEEKLY' },
+                        { label: '매월', value: 'MONTHLY' },
+                        { label: '지정', value: 'CUSTOM' }
+                      ].map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setRecurrenceType(opt.value as any)}
+                          className={`py-2 rounded-xl text-[10px] font-bold border transition-all ${recurrenceType === opt.value
+                            ? "bg-[var(--foreground)] border-transparent text-[var(--background)] shadow-sm"
+                            : "bg-[var(--input-bg)] border-[var(--card-border)] text-gray-400 hover:bg-[var(--card-bg)] hover:border-green-500/30"
+                            }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {recurrenceType === 'CUSTOM' && (
+                      <div className="flex items-center gap-2 bg-green-500/10 p-3 rounded-xl border border-green-500/20">
+                        <span className="text-xs font-bold text-green-600">간격:</span>
+                        <input
+                          type="number"
+                          min="1"
+                          max="365"
+                          value={recurrenceInterval}
+                          onChange={(e) => setRecurrenceInterval(Number(e.target.value))}
+                          className="w-16 bg-[var(--card-bg)] border border-green-500/30 rounded-lg px-2 py-1 text-sm font-bold text-green-600 outline-none focus:ring-2 focus:ring-green-500/20"
+                        />
+                        <span className="text-xs font-bold text-green-600">일 마다 반복</span>
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1">
+                        <CalendarDays className="w-3 h-3" /> 반복 종료일
+                      </label>
+                      <DatePicker
+                        selected={recurrenceEndDate}
+                        onChange={(date: Date | null) => date && setRecurrenceEndDate(date)}
+                        dateFormat="yyyy.MM.dd"
+                        minDate={startDate || new Date()}
+                        locale="ko"
+                        className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-2.5 text-sm font-medium text-[var(--foreground)] outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500"
+                      />
+                    </div>
                   </div>
-                  <span className="text-xs font-bold text-gray-500 uppercase">반복 일정 사용</span>
-                </label>
-                {isRecurring && <RefreshCw className="w-4 h-4 text-green-500 animate-spin-slow" />}
+                )}
               </div>
 
-              {isRecurring && (
-                <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
+              {/* Weather & Temp Manual Input */}
+              <div className="pt-2 space-y-4 border-t border-[var(--card-border)]">
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-gray-500 uppercase">날씨 선택</label>
                   <div className="grid grid-cols-5 gap-1">
-                    {[
-                      { label: '매일', value: 'DAILY' },
-                      { label: '매주', value: 'WEEKLY' },
-                      { label: '격주', value: 'BIWEEKLY' },
-                      { label: '매월', value: 'MONTHLY' },
-                      { label: '지정', value: 'CUSTOM' }
-                    ].map((opt) => (
+                    {weatherOptions.map((opt) => (
                       <button
-                        key={opt.value}
+                        key={opt.label}
                         type="button"
-                        onClick={() => setRecurrenceType(opt.value as any)}
-                        className={`py-2 rounded-xl text-[10px] font-bold border transition-all ${recurrenceType === opt.value
-                          ? "bg-[var(--foreground)] border-transparent text-[var(--background)] shadow-sm"
-                          : "bg-[var(--input-bg)] border-[var(--card-border)] text-gray-400 hover:bg-[var(--card-bg)] hover:border-green-500/30"
+                        onClick={() => setManualWeather(opt.label)}
+                        className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all duration-300 hover:scale-105 active:scale-95 ${manualWeather === opt.label
+                          ? "bg-green-600 border-green-600 text-white shadow-md shadow-green-500/20"
+                          : "bg-[var(--input-bg)] border-[var(--card-border)] text-gray-400 hover:border-green-500/30 hover:bg-[var(--card-bg)]"
                           }`}
                       >
-                        {opt.label}
+                        {opt.icon}
+                        <span className="text-[10px] mt-1 font-bold">{opt.label}</span>
                       </button>
                     ))}
                   </div>
+                </div>
 
-                  {recurrenceType === 'CUSTOM' && (
-                    <div className="flex items-center gap-2 bg-green-500/10 p-3 rounded-xl border border-green-500/20">
-                      <span className="text-xs font-bold text-green-600">간격:</span>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-gray-500 uppercase">최고 기온</label>
+                    <div className="relative">
                       <input
                         type="number"
-                        min="1"
-                        max="365"
-                        value={recurrenceInterval}
-                        onChange={(e) => setRecurrenceInterval(Number(e.target.value))}
-                        className="w-16 bg-[var(--card-bg)] border border-green-500/30 rounded-lg px-2 py-1 text-sm font-bold text-green-600 outline-none focus:ring-2 focus:ring-green-500/20"
+                        min="-30"
+                        max="50"
+                        value={tmx}
+                        onChange={(e) => setTmx(e.target.value)}
+                        className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-2.5 text-sm text-red-500 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500"
                       />
-                      <span className="text-xs font-bold text-green-600">일 마다 반복</span>
+                      <span className="absolute right-3 top-2.5 text-xs text-gray-400">℃</span>
                     </div>
-                  )}
-
+                  </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1">
-                      <CalendarDays className="w-3 h-3" /> 반복 종료일
-                    </label>
-                    <DatePicker
-                      selected={recurrenceEndDate}
-                      onChange={(date: Date | null) => date && setRecurrenceEndDate(date)}
-                      dateFormat="yyyy.MM.dd"
-                      minDate={startDate || new Date()}
-                      locale="ko"
-                      className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-2.5 text-sm font-medium text-[var(--foreground)] outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Weather & Temp Manual Input */}
-            <div className="pt-2 space-y-4 border-t border-[var(--card-border)]">
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-gray-500 uppercase">날씨 선택</label>
-                <div className="grid grid-cols-5 gap-1">
-                  {weatherOptions.map((opt) => (
-                    <button
-                      key={opt.label}
-                      type="button"
-                      onClick={() => setManualWeather(opt.label)}
-                      className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all duration-300 hover:scale-105 active:scale-95 ${manualWeather === opt.label
-                        ? "bg-green-600 border-green-600 text-white shadow-md shadow-green-500/20"
-                        : "bg-[var(--input-bg)] border-[var(--card-border)] text-gray-400 hover:border-green-500/30 hover:bg-[var(--card-bg)]"
-                        }`}
-                    >
-                      {opt.icon}
-                      <span className="text-[10px] mt-1 font-bold">{opt.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-gray-500 uppercase">최고 기온</label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      min="-30"
-                      max="50"
-                      value={tmx}
-                      onChange={(e) => setTmx(e.target.value)}
-                      className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-2.5 text-sm text-red-500 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500"
-                    />
-                    <span className="absolute right-3 top-2.5 text-xs text-gray-400">℃</span>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-gray-500 uppercase">최저 기온</label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      min="-30"
-                      max="50"
-                      value={tmn}
-                      onChange={(e) => setTmn(e.target.value)}
-                      className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-2.5 text-sm text-blue-500 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500"
-                    />
-                    <span className="absolute right-3 top-2.5 text-xs text-gray-400">℃</span>
+                    <label className="text-xs font-semibold text-gray-500 uppercase">최저 기온</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="-30"
+                        max="50"
+                        value={tmn}
+                        onChange={(e) => setTmn(e.target.value)}
+                        className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-2.5 text-sm text-blue-500 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500"
+                      />
+                      <span className="absolute right-3 top-2.5 text-xs text-gray-400">℃</span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* 📸 Image Upload Section */}
-            <div className="space-y-2 pt-2 border-t border-[var(--card-border)]">
-              <label className="text-xs font-semibold text-gray-500 uppercase flex items-center justify-between">
-                <span>사진 첨부 (무제한)</span>
-                <span className="text-[10px] text-green-600 normal-case">{imageFiles.length}장 선택됨</span>
-              </label>
-              
-              <div className="flex flex-wrap gap-2">
-                {imagePreviews.map((url, idx) => (
-                  <div key={idx} className="relative w-20 h-20 rounded-xl overflow-hidden border-2 border-green-500/20 group">
-                    <img src={url} alt="미리보기" className="w-full h-full object-cover" />
-                    <button
-                      type="button"
-                      onClick={() => removeImage(idx)}
-                      className="absolute top-1 right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))}
-                
-                <label className="w-20 h-20 flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-[var(--card-border)] hover:border-green-500/50 hover:bg-green-500/5 transition-all cursor-pointer group">
-                  <Camera className="w-6 h-6 text-gray-400 group-hover:text-green-500 transition-colors" />
-                  <span className="text-[10px] text-gray-400 group-hover:text-green-500 mt-1 font-bold">추가</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="hidden"
-                    onChange={(e) => handleImageChange(e)}
-                  />
+              {/* 📸 Image Upload Section */}
+              <div className="space-y-2 pt-2 border-t border-[var(--card-border)]">
+                <label className="text-xs font-semibold text-gray-500 uppercase flex items-center justify-between">
+                  <span>사진 첨부 (무제한)</span>
+                  <span className="text-[10px] text-green-600 normal-case">{imageFiles.length}장 선택됨</span>
                 </label>
-              </div>
-            </div>
 
-            <button
-              type="submit"
-              disabled={!newTitle.trim() || !startDate}
-              className="w-full bg-green-600 hover:bg-green-700 text-white text-sm font-bold py-3.5 rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-4 shadow-md shadow-green-600/20 active-scale"
-            >
-              일정 등록하기
-              <Plus className="w-4 h-4" />
-            </button>
-          </form>
-        </div>
+                <div className="flex flex-wrap gap-2">
+                  {imagePreviews.map((url, idx) => (
+                    <div key={idx} className="relative w-20 h-20 rounded-xl overflow-hidden border-2 border-green-500/20 group">
+                      <img src={url} alt="미리보기" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => removeImage(idx)}
+                        className="absolute top-1 right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+
+                  <label className="w-20 h-20 flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-[var(--card-border)] hover:border-green-500/50 hover:bg-green-500/5 transition-all cursor-pointer group">
+                    <Camera className="w-6 h-6 text-gray-400 group-hover:text-green-500 transition-colors" />
+                    <span className="text-[10px] text-gray-400 group-hover:text-green-500 mt-1 font-bold">추가</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => handleImageChange(e)}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={!newTitle.trim() || !startDate}
+                className="w-full bg-green-600 hover:bg-green-700 text-white text-sm font-bold py-3.5 rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-4 shadow-md shadow-green-600/20 active-scale"
+              >
+                일정 등록하기
+                <Plus className="w-4 h-4" />
+              </button>
+            </form>
+          </div>
+        ) : (
+          <div className="bg-[var(--card-bg)] rounded-[24px] shadow-sm border border-[var(--card-border)] p-8 text-center">
+            <LockIcon className="w-10 h-10 text-gray-300 mx-auto mb-4" />
+            <p className="text-sm font-bold text-gray-400">일정 등록 권한이 없습니다.</p>
+          </div>
+        )}
 
         {/* Summary Widget */}
         <div className="bg-[var(--card-bg)] rounded-[24px] shadow-sm border border-[var(--card-border)] p-6 flex flex-col items-center text-center">
@@ -738,20 +757,20 @@ export default function DailyView({
 
       {/* 🖼️ Image Modal */}
       {selectedImageUrl && (
-        <div 
+        <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-300"
           onClick={() => setSelectedImageUrl(null)}
         >
           <div className="relative max-w-4xl w-full h-full flex items-center justify-center">
-            <button 
+            <button
               className="absolute top-4 right-4 z-[110] p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all"
               onClick={() => setSelectedImageUrl(null)}
             >
               <X className="w-6 h-6" />
             </button>
-            <img 
-              src={selectedImageUrl} 
-              alt="확대 이미지" 
+            <img
+              src={selectedImageUrl}
+              alt="확대 이미지"
               className="max-w-full max-h-full object-contain rounded-lg shadow-2xl animate-in zoom-in-95 duration-300"
               onClick={(e) => e.stopPropagation()}
             />

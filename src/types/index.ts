@@ -16,6 +16,15 @@ export interface Job {
 }
 
 /**
+ * 사용자 세부 권한 타입
+ */
+export interface UserPermissions {
+  canRead: boolean;    // 조회 권한
+  canWrite: boolean;   // 등록/수정 권한
+  canDelete: boolean;  // 삭제 권한
+}
+
+/**
  * 사용자별 개별 설정 타입
  */
 export interface UserSettings {
@@ -28,5 +37,7 @@ export interface UserSettings {
   location: string;     // 지역 이름
   start_day: number;    // 시작 요일 (0: 일요일, 1: 월요일)
   theme: 'light' | 'dark' | 'farm'; // 앱 테마
+  role: 'admin' | 'user'; // 사용자 역할 (관리자/일반사용자)
+  permissions: UserPermissions; // 세부 권한
   updated_at: number;   // 마지막 수정 시간
 }

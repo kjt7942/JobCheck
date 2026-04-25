@@ -1,0 +1,65 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // 유틸리티 함수: 현재 로그인한 사용자가 관리자인지 확인
+    function isAdmin() {
+      return request.auth != null && 
+             get(/databases/$(database)/documents/user_settings/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    // 유틸리티 함수: 현재 로그인한 사용자의 권한 정보 가져오기
+    function getUserPermissions() {
+      return get(/databases/$(database)/documents/user_settings/$(request.auth.uid)).data.permissions;
+    }
+
+    // 사용자 설정 (user_settings) 규칙
+    match /user_settings/{userId} {
+      // 본인의 설정은 누구나 읽을 수 있고, 관리자는 모든 설정을 읽을 수 있음
+      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      
+      // 계정 생성 시 규칙
+      allow create: if request.auth != null && request.auth.uid == userId && 
+                    request.resource.data.role == 'user' && 
+                    request.resource.data.permissions.canRead == false &&
+                    request.resource.data.permissions.canWrite == false &&
+                    request.resource.data.permissions.canDelete == false;
+
+      // 업데이트 규칙
+      allow update: if request.auth != null && (
+        // 1. 관리자는 무엇이든 수정 가능
+        isAdmin() || 
+        // 2. 일반 사용자는 본인의 설정 중 'role'과 'permissions'를 제외한 필드만 수정 가능
+        (request.auth.uid == userId && 
+         request.resource.data.role == resource.data.role && 
+         request.resource.data.permissions.canRead == resource.data.permissions.canRead &&
+         request.resource.data.permissions.canWrite == resource.data.permissions.canWrite &&
+         request.resource.data.permissions.canDelete == resource.data.permissions.canDelete)
+      );
+      
+      // 삭제 규칙: 관리자만 가능하며, 앱 로직에서 최후의 관리자 보호 수행
+      allow delete: if isAdmin();
+    }
+
+    // 일정 데이터 (jobs) 규칙
+    match /jobs/{jobId} {
+      // 읽기: 관리자이거나 'canRead' 권한이 있는 경우
+      allow read: if request.auth != null && (isAdmin() || getUserPermissions().canRead == true);
+      
+      // 쓰기(생성/수정): 관리자이거나 'canWrite' 권한이 있는 경우
+      allow create, update: if request.auth != null && (isAdmin() || getUserPermissions().canWrite == true);
+      
+      // 삭제: 관리자이거나 'canDelete' 권한이 있는 경우
+      allow delete: if request.auth != null && (isAdmin() || getUserPermissions().canDelete == true);
+    }
+    
+    // 알림 및 메일 전송 규칙 (관리자만 접근 가능)
+    match /notifications/{notifId} {
+      allow read, write: if isAdmin();
+    }
+    
+    match /mail/{mailId} {
+      allow read, write: if isAdmin();
+    }
+  }
+}

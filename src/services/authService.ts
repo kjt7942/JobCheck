@@ -44,7 +44,7 @@ export class AuthService {
     const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
     const user = userCredential.user;
 
-    // 초기 사용자 설정 생성
+    // 초기 사용자 설정 생성 (보안을 위해 기본 권한은 모두 false)
     const initialSettings: UserSettings = {
       user_id: user.uid,
       email: email,
@@ -55,10 +55,25 @@ export class AuthService {
       location: "문경시",
       start_day: 0,
       theme: 'light',
+      role: 'user',
+      permissions: {
+        canRead: false,
+        canWrite: false,
+        canDelete: false
+      },
       updated_at: Date.now()
     };
 
     await firestoreRepo.saveUserSettings(initialSettings);
+
+    // 관리자에게 새 사용자 가입 알림
+    await firestoreRepo.addNotification({
+      type: 'NEW_USER',
+      title: '새로운 가입 승인 대기',
+      message: `${initialSettings.user_name}(${initialSettings.email})님이 가입했습니다. 권한 승인이 필요합니다.`,
+      user_id: user.uid
+    });
+
     return { user, settings: initialSettings };
   }
 
@@ -92,9 +107,24 @@ export class AuthService {
           location: "문경시",
           start_day: 0,
           theme: 'light',
+          role: 'user',
+          permissions: {
+            canRead: false,
+            canWrite: false,
+            canDelete: false
+          },
           updated_at: Date.now()
         };
         await firestoreRepo.saveUserSettings(initialSettings);
+
+        // 관리자에게 새 사용자 가입 알림
+        await firestoreRepo.addNotification({
+          type: 'NEW_USER',
+          title: '새로운 가입 승인 대기',
+          message: `${initialSettings.user_name}(${initialSettings.email})님이 가입했습니다. 권한 승인이 필요합니다.`,
+          user_id: user.uid
+        });
+
         return { user, settings: initialSettings };
       }
 
@@ -141,9 +171,23 @@ export class AuthService {
             location: "문경시",
             start_day: 0,
             theme: 'light',
+            role: 'user',
+            permissions: {
+              canRead: false,
+              canWrite: false,
+              canDelete: false
+            },
             updated_at: Date.now()
           };
           await firestoreRepo.saveUserSettings(initialSettings);
+
+          // 관리자에게 새 사용자 가입 알림
+          await firestoreRepo.addNotification({
+            type: 'NEW_USER',
+            title: '새로운 가입 승인 대기',
+            message: `${initialSettings.user_name}(${initialSettings.email})님이 가입했습니다. 권한 승인이 필요합니다.`,
+            user_id: user.uid
+          });
         }
         return result;
       }

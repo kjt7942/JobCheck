@@ -11,6 +11,8 @@ export default function MonthlyView({
   onToggle,
   onDelete,
   onUpdate,
+  canWrite = false,
+  canDelete = false,
 }: {
   tasks: Job[];
   farmInfo: any;
@@ -18,6 +20,8 @@ export default function MonthlyView({
   onToggle: (id: string, is_done: boolean) => void;
   onDelete: (id: string) => void;
   onUpdate: (id: string, updates: Partial<Job>) => void;
+  canWrite?: boolean;
+  canDelete?: boolean;
 }) {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -162,12 +166,9 @@ export default function MonthlyView({
             selectedDayTasks.map((task) => (
               <div
                 key={task.id}
-                onClick={() => onToggle(task.id!, !task.is_done)}
-                className={`p-4 rounded-2xl bg-[var(--card-bg)] border border-[var(--card-border)] flex items-center gap-3 active:scale-[0.98] transition-transform ${task.is_done ? 'opacity-60' : ''
-                  }`}
+                className={`p-4 rounded-2xl bg-[var(--card-bg)] border border-[var(--card-border)] flex items-center gap-3 transition-transform ${task.is_done ? 'opacity-60' : ''}`}
               >
-                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${task.is_done ? 'bg-green-500 border-green-500' : 'border-gray-200'
-                  }`}>
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${task.is_done ? 'bg-green-500 border-green-500' : 'border-gray-200'}`}>
                   {task.is_done && <Check className="w-3 h-3 text-white" />}
                 </div>
                 <div className="flex-1 min-w-0">

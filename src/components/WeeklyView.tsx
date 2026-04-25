@@ -13,6 +13,8 @@ export default function WeeklyView({
   onToggle,
   onDelete,
   onUpdate,
+  canWrite = false,
+  canDelete = false,
 }: {
   tasks: Job[];
   farmInfo: any;
@@ -20,6 +22,8 @@ export default function WeeklyView({
   onToggle: (id: string, is_done: boolean) => void;
   onDelete: (id: string) => void;
   onUpdate: (id: string, updates: Partial<Job>) => void;
+  canWrite?: boolean;
+  canDelete?: boolean;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -28,7 +32,7 @@ export default function WeeklyView({
   const [viewDate, setViewDate] = useState(new Date());
 
   const startDay = farmInfo?.weekStartsOn ?? 1;
-  const weekStart = startOfWeek(viewDate, { weekStartsOn: startDay as any }); 
+  const weekStart = startOfWeek(viewDate, { weekStartsOn: startDay as any });
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
   const goToPreviousWeek = () => setViewDate(prev => subWeeks(prev, 1));
@@ -67,9 +71,9 @@ export default function WeeklyView({
             {format(weekStart, "M월 d일")} ~ {format(addDays(weekStart, 6), "M월 d일")} 일정
           </h2>
         </div>
-        
+
         <div className="flex items-center gap-2 bg-[var(--card-bg)] p-1 rounded-xl border border-[var(--card-border)] shadow-sm">
-          <button 
+          <button
             onClick={goToPreviousWeek}
             className="p-1.5 hover:bg-[var(--input-bg)] rounded-lg transition-all text-gray-400 hover:text-green-600"
             title="이전 주"
@@ -77,14 +81,14 @@ export default function WeeklyView({
             <ChevronLeft className="w-5 h-5" />
           </button>
           {!isSameDay(startOfWeek(new Date(), { weekStartsOn: startDay as any }), weekStart) && (
-            <button 
+            <button
               onClick={goToCurrentWeek}
               className="px-3 py-1 text-[10px] font-black bg-green-500/10 text-green-600 rounded-md hover:bg-green-500/20 transition-all border border-green-500/20"
             >
               이번 주
             </button>
           )}
-          <button 
+          <button
             onClick={goToNextWeek}
             className="p-1.5 hover:bg-[var(--input-bg)] rounded-lg transition-all text-gray-400 hover:text-green-600"
             title="다음 주"
@@ -100,13 +104,12 @@ export default function WeeklyView({
           const isToday = isSameDay(day, new Date());
 
           return (
-            <div 
-              key={day.toISOString()} 
-              className={`flex flex-col rounded-2xl border transition-all duration-300 min-h-[300px] ${
-                isToday 
-                  ? "bg-green-500/5 border-green-500/30 shadow-sm ring-1 ring-green-500/20" 
-                  : "bg-[var(--card-bg)] border-[var(--card-border)] hover:border-green-500/30 shadow-sm"
-              }`}
+            <div
+              key={day.toISOString()}
+              className={`flex flex-col rounded-2xl border transition-all duration-300 min-h-[300px] ${isToday
+                ? "bg-green-500/5 border-green-500/30 shadow-sm ring-1 ring-green-500/20"
+                : "bg-[var(--card-bg)] border-[var(--card-border)] hover:border-green-500/30 shadow-sm"
+                }`}
             >
               {/* Day Header */}
               <div className={`p-4 border-b ${isToday ? "border-green-500/20" : "border-[var(--card-border)]"}`}>
@@ -128,13 +131,13 @@ export default function WeeklyView({
                   </div>
                 ) : (
                   dayTasks.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map((task) => (
-                    <div 
+                    <div
                       key={task.id}
                       className="group relative bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl p-3 hover:bg-[var(--card-bg)] hover:shadow-md hover:border-green-500/30 transition-all"
                     >
                       {editingId === task.id ? (
                         <div className="space-y-2 animate-in fade-in zoom-in-95 duration-200">
-                           <input 
+                          <input
                             type="text"
                             value={editTitle}
                             onChange={(e) => setEditTitle(e.target.value)}
@@ -142,17 +145,17 @@ export default function WeeklyView({
                             autoFocus
                           />
                           <div className="flex items-center gap-1">
-                             <Clock className="w-3 h-3 text-green-500" />
-                             <DatePicker
-                               selected={editDate}
-                               onChange={(date: Date | null) => setEditDate(date)}
-                               showTimeSelect
-                               showTimeSelectOnly
-                               timeIntervals={15}
-                               dateFormat="HH:mm"
-                               locale="ko"
-                               className="bg-white border border-green-200 rounded-lg px-1 py-0.5 text-[10px] outline-none w-16 cursor-pointer"
-                             />
+                            <Clock className="w-3 h-3 text-green-500" />
+                            <DatePicker
+                              selected={editDate}
+                              onChange={(date: Date | null) => setEditDate(date)}
+                              showTimeSelect
+                              showTimeSelectOnly
+                              timeIntervals={15}
+                              dateFormat="HH:mm"
+                              locale="ko"
+                              className="bg-white border border-green-200 rounded-lg px-1 py-0.5 text-[10px] outline-none w-16 cursor-pointer"
+                            />
                           </div>
                           <div className="flex gap-1 justify-end">
                             <button onClick={() => handleSaveEdit(task.id!)} className="p-1 rounded bg-green-500 text-white hover:bg-green-600"><Save className="w-3 h-3" /></button>
@@ -160,16 +163,13 @@ export default function WeeklyView({
                           </div>
                         </div>
                       ) : (
-                        <div className="flex items-start gap-2" onClick={() => onToggle(task.id!, !task.is_done)}>
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); onToggle(task.id!, !task.is_done); }}
-                            className="mt-0.5 transition-colors"
-                          >
-                            {task.is_done 
-                              ? <Check className="w-4 h-4 text-green-500" /> 
-                              : <Circle className="w-4 h-4 text-gray-300 group-hover:text-green-400" />
+                        <div className="flex items-start gap-2">
+                          <div className={`mt-0.5 transition-colors ${task.is_done ? "text-green-500" : "text-gray-300"}`}>
+                            {task.is_done
+                              ? <Check className="w-4 h-4" />
+                              : <Circle className="w-4 h-4" />
                             }
-                          </button>
+                          </div>
                           <div className="flex-1 min-w-0">
                             <p className={`text-sm font-medium leading-tight truncate flex items-center gap-1 ${task.is_done ? "text-gray-400 line-through opacity-50" : "text-[var(--foreground)]"}`}>
                               {task.task}
@@ -180,18 +180,22 @@ export default function WeeklyView({
                             </p>
                           </div>
                           <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); startEdit(task); }}
-                              className="p-1 text-gray-400 hover:text-green-500 hover:bg-green-500/10 rounded-md transition-all"
-                            >
-                              <Edit2 className="w-3 h-3" />
-                            </button>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); onDelete(task.id!); }}
-                              className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-md transition-all"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
+                            {canWrite && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); startEdit(task); }}
+                                className="p-1 text-gray-400 hover:text-green-500 hover:bg-green-500/10 rounded-md transition-all"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                              </button>
+                            )}
+                            {canDelete && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onDelete(task.id!); }}
+                                className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-md transition-all"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
                           </div>
                         </div>
                       )}
@@ -206,25 +210,24 @@ export default function WeeklyView({
 
       {/* Weekly Bottom Navigation */}
       <div className="flex items-center justify-between bg-[var(--card-bg)] p-4 rounded-2xl border border-[var(--card-border)] shadow-sm">
-        <button 
+        <button
           onClick={goToPreviousWeek}
           className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-gray-500 hover:text-green-600 hover:bg-[var(--input-bg)] rounded-xl transition-all group"
         >
           <ChevronLeft className="w-5 h-5 transition-transform group-hover:-translate-x-1" />
           이전 주
         </button>
-        <button 
+        <button
           onClick={goToCurrentWeek}
-          className={`px-8 py-2 text-sm font-black rounded-xl transition-all ${
-            isSameDay(startOfWeek(new Date(), { weekStartsOn: startDay as any }), weekStart)
-              ? "bg-[var(--input-bg)] text-gray-400 cursor-default"
-              : "bg-green-600 text-white shadow-md shadow-green-500/20 hover:shadow-lg hover:-translate-y-0.5"
-          }`}
+          className={`px-8 py-2 text-sm font-black rounded-xl transition-all ${isSameDay(startOfWeek(new Date(), { weekStartsOn: startDay as any }), weekStart)
+            ? "bg-[var(--input-bg)] text-gray-400 cursor-default"
+            : "bg-green-600 text-white shadow-md shadow-green-500/20 hover:shadow-lg hover:-translate-y-0.5"
+            }`}
           disabled={isSameDay(startOfWeek(new Date(), { weekStartsOn: startDay as any }), weekStart)}
         >
           이번 주
         </button>
-        <button 
+        <button
           onClick={goToNextWeek}
           className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-gray-500 hover:text-green-600 hover:bg-[var(--input-bg)] rounded-xl transition-all group"
         >

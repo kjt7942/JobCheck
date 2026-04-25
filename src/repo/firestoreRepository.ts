@@ -11,7 +11,9 @@ import {
   where,
   orderBy,
   onSnapshot,
-  Timestamp
+  Timestamp,
+  getCountFromServer,
+  limit
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Job, UserSettings } from "@/types";
@@ -25,6 +27,35 @@ export class FirestoreRepository {
   private get settingsCol() {
     if (!db) throw new Error("Firebase가 초기화되지 않았습니다.");
     return collection(db, "user_settings");
+  }
+
+  private get notificationsCol() {
+    if (!db) throw new Error("Firebase가 초기화되지 않았습니다.");
+    return collection(db, "notifications");
+  }
+
+  // --- Notifications ---
+
+  async addNotification(data: any): Promise<void> {
+    await addDoc(this.notificationsCol, {
+      ...data,
+      created_at: Date.now(),
+      read: false
+    });
+  }
+
+  subscribeUnreadCount(callback: (count: number) => void): () => void {
+    const q = query(this.notificationsCol, where("read", "==", false));
+    return onSnapshot(q, (snapshot) => {
+      callback(snapshot.size);
+    });
+  }
+
+  async markAllNotificationsAsRead(): Promise<void> {
+    const q = query(this.notificationsCol, where("read", "==", false));
+    const snapshot = await getDocs(q);
+    const batchPromises = snapshot.docs.map(d => updateDoc(doc(this.notificationsCol, d.id), { read: true }));
+    await Promise.all(batchPromises);
   }
 
   // --- User Settings ---
@@ -45,6 +76,22 @@ export class FirestoreRepository {
       ...settings,
       updated_at: Date.now()
     });
+  }
+
+  /**
+   * 모든 사용자의 설정 목록을 가져옵니다 (관리자용).
+   */
+  async getAllUserSettings(): Promise<UserSettings[]> {
+    const querySnapshot = await getDocs(this.settingsCol);
+    return querySnapshot.docs.map(doc => doc.data() as UserSettings);
+  }
+
+  /**
+   * 특정 사용자의 설정을 삭제합니다.
+   */
+  async deleteUserSettings(uid: string): Promise<void> {
+    const docRef = doc(this.settingsCol, uid);
+    await deleteDoc(docRef);
   }
 
   // --- Jobs ---
