@@ -251,7 +251,7 @@ export default function SettingsModal({ isOpen, onClose, farmInfo: initialInfo, 
                 </div>
               ) : (
                 <>
-                  {allUsers.some(u => u.role !== 'admin' && !u.permissions.canRead) && (
+                  {allUsers.some(u => u.role !== 'admin' && !u.permissions?.canRead) && (
                     <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 flex items-center gap-3 animate-pulse">
                       <Bell className="w-5 h-5 text-orange-500" />
                       <p className="text-xs font-bold text-orange-700">권한 승인이 필요한 신규 사용자가 있습니다.</p>
@@ -295,17 +295,18 @@ export default function SettingsModal({ isOpen, onClose, farmInfo: initialInfo, 
                         <p className="text-xs font-bold text-gray-400 uppercase tracking-tighter">권한 설정</p>
                         <div className="flex gap-1.5">
                           {[
-                            { key: 'canRead', label: '읽기', icon: u.permissions.canRead ? Unlock : Lock },
-                            { key: 'canWrite', label: '쓰기', icon: u.permissions.canWrite ? Save : Lock },
-                            { key: 'canDelete', label: '삭제', icon: u.permissions.canDelete ? Trash2 : Lock }
+                            { key: 'canRead', label: '읽기', icon: u.permissions?.canRead ? Unlock : Lock },
+                            { key: 'canWrite', label: '쓰기', icon: u.permissions?.canWrite ? Save : Lock },
+                            { key: 'canDelete', label: '삭제', icon: u.permissions?.canDelete ? Trash2 : Lock }
                           ].map((p) => {
                             const Icon = p.icon;
-                            const hasPermission = (u.permissions as any)[p.key];
+                            const permissions = u.permissions || { canRead: false, canWrite: false, canDelete: false };
+                            const hasPermission = (permissions as any)[p.key];
                             return (
                               <button
                                 key={p.key}
                                 onClick={() => handleUpdateUser(u.user_id, {
-                                  permissions: { ...u.permissions, [p.key]: !hasPermission }
+                                  permissions: { ...(u.permissions || { canRead: false, canWrite: false, canDelete: false }), [p.key]: !hasPermission }
                                 })}
                                 disabled={processingUid === u.user_id}
                                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all border ${hasPermission

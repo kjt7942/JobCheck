@@ -65,7 +65,12 @@ export class FirestoreRepository {
     const docSnap = await getDoc(docRef);
 
     if (docSnap.exists()) {
-      return docSnap.data() as UserSettings;
+      const data = docSnap.data();
+      return {
+        ...data,
+        permissions: data.permissions || { canRead: false, canWrite: false, canDelete: false },
+        role: data.role || 'user'
+      } as UserSettings;
     }
     return null;
   }
@@ -83,7 +88,14 @@ export class FirestoreRepository {
    */
   async getAllUserSettings(): Promise<UserSettings[]> {
     const querySnapshot = await getDocs(this.settingsCol);
-    return querySnapshot.docs.map(doc => doc.data() as UserSettings);
+    return querySnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        ...data,
+        permissions: data.permissions || { canRead: false, canWrite: false, canDelete: false },
+        role: data.role || 'user'
+      } as UserSettings;
+    });
   }
 
   /**
