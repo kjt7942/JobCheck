@@ -11,6 +11,42 @@ import { compressImage } from "@/utils/imageUtils";
 
 registerLocale("ko", ko);
 
+// 🎨 스켈레톤 UI 포함 이미지 컴포넌트
+const ImageWithSkeleton = ({ src, alt, className, onClick, onTouchStart, onTouchMove, onTouchEnd }: { 
+  src: string, 
+  alt: string, 
+  className?: string, 
+  onClick?: React.MouseEventHandler,
+  onTouchStart?: React.TouchEventHandler,
+  onTouchMove?: React.TouchEventHandler,
+  onTouchEnd?: React.TouchEventHandler
+}) => {
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  // src가 변경될 때만 로딩 상태 초기화
+  useEffect(() => {
+    setIsLoaded(false);
+  }, [src]);
+
+  return (
+    <div className={`relative overflow-hidden ${className}`}>
+      {!isLoaded && (
+        <div className="absolute inset-0 bg-gradient-to-r from-[var(--input-bg)] via-gray-200/30 to-[var(--input-bg)] animate-shimmer bg-[length:200%_100%]" />
+      )}
+      <img
+        src={src}
+        alt={alt}
+        onLoad={() => setIsLoaded(true)}
+        className={`w-full h-full object-cover transition-opacity duration-500 ${isLoaded ? "opacity-100" : "opacity-0"}`}
+        onClick={onClick}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+      />
+    </div>
+  );
+};
+
 export default function DailyView({
   tasks,
   onAdd,
@@ -217,37 +253,8 @@ export default function DailyView({
     });
   }, [viewTasks]);
 
-  // 🎨 스켈레톤 UI 포함 이미지 컴포넌트
-  // 🎨 스켈레톤 UI 포함 이미지 컴포넌트
-  const ImageWithSkeleton = ({ src, alt, className, onClick, onTouchStart, onTouchMove, onTouchEnd }: { 
-    src: string, 
-    alt: string, 
-    className?: string, 
-    onClick?: React.MouseEventHandler,
-    onTouchStart?: React.TouchEventHandler,
-    onTouchMove?: React.TouchEventHandler,
-    onTouchEnd?: React.TouchEventHandler
-  }) => {
-    const [isLoaded, setIsLoaded] = useState(false);
 
-    return (
-      <div className={`relative overflow-hidden ${className}`}>
-        {!isLoaded && (
-          <div className="absolute inset-0 bg-gradient-to-r from-[var(--input-bg)] via-gray-200/30 to-[var(--input-bg)] animate-shimmer bg-[length:200%_100%]" />
-        )}
-        <img
-          src={src}
-          alt={alt}
-          onLoad={() => setIsLoaded(true)}
-          className={`w-full h-full object-cover transition-opacity duration-500 ${isLoaded ? "opacity-100" : "opacity-0"}`}
-          onClick={onClick}
-          onTouchStart={onTouchStart}
-          onTouchMove={onTouchMove}
-          onTouchEnd={onTouchEnd}
-        />
-      </div>
-    );
-  };
+
 
   // 이미지 슬라이드 이동 로직
   const goToNextImage = (e?: React.MouseEvent | React.TouchEvent) => {
@@ -298,6 +305,18 @@ export default function DailyView({
     if (isLeftSwipe) goToNextImage();
     if (isRightSwipe) goToPrevImage();
   };
+
+  // 🔒 모달 오픈 시 배경 스크롤 방지
+  useEffect(() => {
+    if (selectedImageInfo) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [selectedImageInfo]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start animate-in fade-in duration-500">
@@ -919,22 +938,24 @@ export default function DailyView({
             {/* Navigation Buttons */}
             {selectedImageInfo.urls.length > 1 && (
               <>
-                {/* Left Area (Zone 4) */}
+                {/* Left Arrow Button */}
                 <button
                   onClick={(e) => { e.stopPropagation(); goToPrevImage(); }}
-                  className="absolute left-0 top-1/4 bottom-1/4 w-1/3 z-[110] flex items-center justify-start pl-4 group active:bg-white/5 transition-colors"
+                  className="absolute left-6 top-1/2 -translate-y-1/2 z-[110] group active:scale-90 transition-all"
+                  title="이전 이미지"
                 >
-                  <div className="p-3 sm:p-4 bg-black/20 hover:bg-black/40 text-white rounded-full sm:rounded-2xl border border-white/10 backdrop-blur-sm transition-all group-active:scale-90">
-                    <ChevronLeft className="w-6 h-6 sm:w-8 sm:h-8 group-hover:-translate-x-1 transition-transform" />
+                  <div className="p-3 sm:p-5 bg-black/40 hover:bg-black/60 text-white rounded-full border border-white/20 backdrop-blur-md transition-all shadow-xl">
+                    <ChevronLeft className="w-6 h-6 sm:w-10 sm:h-10 group-hover:-translate-x-1 transition-transform" />
                   </div>
                 </button>
-                {/* Right Area (Zone 6) */}
+                {/* Right Arrow Button */}
                 <button
                   onClick={(e) => { e.stopPropagation(); goToNextImage(); }}
-                  className="absolute right-0 top-1/4 bottom-1/4 w-1/3 z-[110] flex items-center justify-end pr-4 group active:bg-white/5 transition-colors"
+                  className="absolute right-6 top-1/2 -translate-y-1/2 z-[110] group active:scale-90 transition-all"
+                  title="다음 이미지"
                 >
-                  <div className="p-3 sm:p-4 bg-black/20 hover:bg-black/40 text-white rounded-full sm:rounded-2xl border border-white/10 backdrop-blur-sm transition-all group-active:scale-90">
-                    <ChevronRight className="w-6 h-6 sm:w-8 sm:h-8 group-hover:translate-x-1 transition-transform" />
+                  <div className="p-3 sm:p-5 bg-black/40 hover:bg-black/60 text-white rounded-full border border-white/20 backdrop-blur-md transition-all shadow-xl">
+                    <ChevronRight className="w-6 h-6 sm:w-10 sm:h-10 group-hover:translate-x-1 transition-transform" />
                   </div>
                 </button>
               </>
