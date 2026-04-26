@@ -916,20 +916,24 @@ export default function DailyView({
 
           {/* Main Image Container */}
           <div className="relative w-full h-full flex items-center justify-center p-4">
-            {/* Navigation Buttons (Visible on both Mobile & Desktop) */}
+            {/* Navigation Buttons */}
             {selectedImageInfo.urls.length > 1 && (
               <>
                 <button
-                  onClick={goToPrevImage}
-                  className="absolute left-2 sm:left-4 z-[110] p-3 sm:p-4 bg-black/20 hover:bg-black/40 text-white rounded-full sm:rounded-2xl transition-all border border-white/10 backdrop-blur-sm group active:scale-90"
+                  onClick={(e) => { e.stopPropagation(); goToPrevImage(); }}
+                  className="absolute left-0 top-0 bottom-0 w-1/3 z-[110] flex items-center justify-start pl-4 group active:bg-white/5 transition-colors"
                 >
-                  <ChevronLeft className="w-6 h-6 sm:w-8 sm:h-8 group-hover:-translate-x-1 transition-transform" />
+                  <div className="p-3 sm:p-4 bg-black/20 hover:bg-black/40 text-white rounded-full sm:rounded-2xl border border-white/10 backdrop-blur-sm transition-all group-active:scale-90">
+                    <ChevronLeft className="w-6 h-6 sm:w-8 sm:h-8 group-hover:-translate-x-1 transition-transform" />
+                  </div>
                 </button>
                 <button
-                  onClick={goToNextImage}
-                  className="absolute right-2 sm:right-4 z-[110] p-3 sm:p-4 bg-black/20 hover:bg-black/40 text-white rounded-full sm:rounded-2xl transition-all border border-white/10 backdrop-blur-sm group active:scale-90"
+                  onClick={(e) => { e.stopPropagation(); goToNextImage(); }}
+                  className="absolute right-0 top-0 bottom-0 w-1/3 z-[110] flex items-center justify-end pr-4 group active:bg-white/5 transition-colors"
                 >
-                  <ChevronRight className="w-6 h-6 sm:w-8 sm:h-8 group-hover:translate-x-1 transition-transform" />
+                  <div className="p-3 sm:p-4 bg-black/20 hover:bg-black/40 text-white rounded-full sm:rounded-2xl border border-white/10 backdrop-blur-sm transition-all group-active:scale-90">
+                    <ChevronRight className="w-6 h-6 sm:w-8 sm:h-8 group-hover:translate-x-1 transition-transform" />
+                  </div>
                 </button>
               </>
             )}
