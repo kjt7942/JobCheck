@@ -109,27 +109,27 @@ export default function YearlyView({
                       <Sprout className="w-6 h-6 text-green-300" />
                     </div>
                   ) : isSelected ? (
-                    /* Detailed Full List */
-                    <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar animate-in fade-in slide-in-from-top-2 duration-300">
+                    /* Detailed Full List - Compact One Line */
+                    <div className="space-y-1 max-h-[400px] overflow-y-auto pr-1 custom-scrollbar animate-in fade-in slide-in-from-top-2 duration-300">
                       {sortedTasks.map((task) => (
                         <div 
                           key={task.id} 
-                          className={`p-3 rounded-2xl border transition-all duration-200 ${
-                            task.is_done ? "bg-[var(--input-bg)]/50 border-[var(--card-border)] opacity-60" : "bg-green-500/5 border-green-500/10 hover:border-green-500/30"
+                          className={`flex items-center gap-2 py-1.5 px-2 rounded-lg transition-all duration-200 ${
+                            task.is_done ? "opacity-50" : "hover:bg-green-500/5"
                           }`}
                         >
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-[9px] font-black text-green-600 bg-green-500/10 px-1.5 py-0.5 rounded-md">
-                              {format(new Date(task.date), "d일")}
-                            </span>
-                            <span className="flex items-center gap-1 text-[9px] font-mono text-gray-400">
-                              <Clock className="w-2.5 h-2.5" />
-                              {format(new Date(task.date), "HH:mm")}
-                            </span>
-                          </div>
-                          <p className={`text-xs font-bold leading-tight ${task.is_done ? "text-gray-400 line-through" : "text-[var(--foreground)]"}`}>
+                          <span className="text-[10px] font-black text-green-600 shrink-0 min-w-[28px]">
+                            {format(new Date(task.date), "d일")}
+                          </span>
+                          <span className="text-[10px] font-mono text-gray-400 shrink-0 min-w-[35px]">
+                            {format(new Date(task.date), "HH:mm")}
+                          </span>
+                          <p className={`text-[11px] font-bold truncate flex-1 ${task.is_done ? "text-gray-400 line-through decoration-1" : "text-[var(--foreground)]"}`}>
                             {task.task}
                           </p>
+                          {task.is_done && (
+                            <div className="w-1.5 h-1.5 rounded-full bg-green-500/30 shrink-0" />
+                          )}
                         </div>
                       ))}
                     </div>
