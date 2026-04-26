@@ -919,17 +919,19 @@ export default function DailyView({
             {/* Navigation Buttons */}
             {selectedImageInfo.urls.length > 1 && (
               <>
+                {/* Left Area (Zone 4) */}
                 <button
                   onClick={(e) => { e.stopPropagation(); goToPrevImage(); }}
-                  className="absolute left-0 top-0 bottom-0 w-1/3 z-[110] flex items-center justify-start pl-4 group active:bg-white/5 transition-colors"
+                  className="absolute left-0 top-1/4 bottom-1/4 w-1/3 z-[110] flex items-center justify-start pl-4 group active:bg-white/5 transition-colors"
                 >
                   <div className="p-3 sm:p-4 bg-black/20 hover:bg-black/40 text-white rounded-full sm:rounded-2xl border border-white/10 backdrop-blur-sm transition-all group-active:scale-90">
                     <ChevronLeft className="w-6 h-6 sm:w-8 sm:h-8 group-hover:-translate-x-1 transition-transform" />
                   </div>
                 </button>
+                {/* Right Area (Zone 6) */}
                 <button
                   onClick={(e) => { e.stopPropagation(); goToNextImage(); }}
-                  className="absolute right-0 top-0 bottom-0 w-1/3 z-[110] flex items-center justify-end pr-4 group active:bg-white/5 transition-colors"
+                  className="absolute right-0 top-1/4 bottom-1/4 w-1/3 z-[110] flex items-center justify-end pr-4 group active:bg-white/5 transition-colors"
                 >
                   <div className="p-3 sm:p-4 bg-black/20 hover:bg-black/40 text-white rounded-full sm:rounded-2xl border border-white/10 backdrop-blur-sm transition-all group-active:scale-90">
                     <ChevronRight className="w-6 h-6 sm:w-8 sm:h-8 group-hover:translate-x-1 transition-transform" />
@@ -953,12 +955,6 @@ export default function DailyView({
             </div>
           </div>
 
-          {/* Bottom Bar: Swipe Hint for Mobile */}
-          <div className="sm:hidden absolute bottom-8 text-white/40 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2">
-            <div className="w-8 h-px bg-white/20" />
-            Swipe to navigate
-            <div className="w-8 h-px bg-white/20" />
-          </div>
         </div>
       )}
     </div>
