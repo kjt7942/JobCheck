@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { format, isSameDay, addDays, subDays, addWeeks, subWeeks, addMonths } from "date-fns";
 import { ko } from "date-fns/locale";
 import { Job } from "@/types";
@@ -51,7 +51,7 @@ export default function DailyView({
   const [editExistingUrls, setEditExistingUrls] = useState<string[]>([]);
 
   const [viewDate, setViewDate] = useState(new Date());
-  const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null);
+  const [selectedImageInfo, setSelectedImageInfo] = useState<{ urls: string[], index: number } | null>(null);
 
   // 반복 일정 관련 상태
   const [isRecurring, setIsRecurring] = useState(false);
@@ -70,6 +70,25 @@ export default function DailyView({
   const goToPrevious = () => setViewDate(prev => subDays(prev, 1));
   const goToNext = () => setViewDate(prev => addDays(prev, 1));
   const goToToday = () => setViewDate(new Date());
+
+  // 해당 일자에 등록된 일정이 있다면 날씨/기온 정보를 자동으로 불러와 기본값으로 설정
+  useEffect(() => {
+    const existingTaskWithWeather = viewTasks.find(t => 
+      t.weather || 
+      (t.temp_max !== undefined && t.temp_max !== null) || 
+      (t.temp_min !== undefined && t.temp_min !== null)
+    );
+
+    if (existingTaskWithWeather) {
+      if (existingTaskWithWeather.weather) setManualWeather(existingTaskWithWeather.weather);
+      if (existingTaskWithWeather.temp_max !== undefined && existingTaskWithWeather.temp_max !== null) {
+        setTmx(String(existingTaskWithWeather.temp_max));
+      }
+      if (existingTaskWithWeather.temp_min !== undefined && existingTaskWithWeather.temp_min !== null) {
+        setTmn(String(existingTaskWithWeather.temp_min));
+      }
+    }
+  }, [viewDate, tasks.length]); // 날짜 변경 또는 전체 일정 개수 변경 시 실행
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean = false) => {
     const files = Array.from(e.target.files || []);
@@ -184,58 +203,164 @@ export default function DailyView({
     { label: "눈", icon: <CloudSnow className="w-4 h-4" /> },
   ];
 
+  // 🖼️ 이미지 프리로딩 및 캐싱 로직
+  useEffect(() => {
+    if (viewTasks.length === 0) return;
+
+    viewTasks.forEach(task => {
+      if (task.image_urls) {
+        task.image_urls.forEach(url => {
+          const img = new Image();
+          img.src = url;
+        });
+      }
+    });
+  }, [viewTasks]);
+
+  // 🎨 스켈레톤 UI 포함 이미지 컴포넌트
+  const ImageWithSkeleton = ({ src, alt, className, onClick }: { src: string, alt: string, className?: string, onClick?: () => void }) => {
+    const [isLoaded, setIsLoaded] = useState(false);
+
+    return (
+      <div className={`relative overflow-hidden ${className}`}>
+        {!isLoaded && (
+          <div className="absolute inset-0 bg-gradient-to-r from-[var(--input-bg)] via-gray-200/30 to-[var(--input-bg)] animate-shimmer bg-[length:200%_100%]" />
+        )}
+        <img
+          src={src}
+          alt={alt}
+          onLoad={() => setIsLoaded(true)}
+          className={`w-full h-full object-cover transition-opacity duration-500 ${isLoaded ? "opacity-100" : "opacity-0"}`}
+          onClick={onClick}
+        />
+      </div>
+    );
+  };
+
+  // 이미지 슬라이드 이동 로직
+  const goToNextImage = (e?: React.MouseEvent | React.TouchEvent) => {
+    e?.stopPropagation();
+    if (!selectedImageInfo) return;
+    const { urls, index } = selectedImageInfo;
+    if (index < urls.length - 1) {
+      setSelectedImageInfo({ urls, index: index + 1 });
+    } else {
+      // 마지막이면 처음으로 (순환)
+      setSelectedImageInfo({ urls, index: 0 });
+    }
+  };
+
+  const goToPrevImage = (e?: React.MouseEvent | React.TouchEvent) => {
+    e?.stopPropagation();
+    if (!selectedImageInfo) return;
+    const { urls, index } = selectedImageInfo;
+    if (index > 0) {
+      setSelectedImageInfo({ urls, index: index - 1 });
+    } else {
+      // 처음이면 마지막으로 (순환)
+      setSelectedImageInfo({ urls, index: urls.length - 1 });
+    }
+  };
+
+  // 스와이프 감지 로직
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
+
+  const minSwipeDistance = 50;
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+
+  const onTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > minSwipeDistance;
+    const isRightSwipe = distance < -minSwipeDistance;
+
+    if (isLeftSwipe) goToNextImage();
+    if (isRightSwipe) goToPrevImage();
+  };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start animate-in fade-in duration-500">
 
       {/* 🚀 Left Area: Task List & Timeline (8 columns) */}
       <div className="lg:col-span-8 flex flex-col space-y-6">
 
-        {/* Header Section */}
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between items-start gap-4 bg-[var(--card-bg)] p-6 rounded-[24px] shadow-sm border border-[var(--card-border)]">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-            <div className="flex items-center gap-1">
-              <button
-                onClick={goToPrevious}
-                className="p-2 hover:bg-[var(--input-bg)] rounded-full transition-colors text-gray-400 hover:text-green-600"
-                title="이전날"
-              >
-                <ChevronLeft className="w-6 h-6" />
-              </button>
-              <div className="mx-1">
-                <h2
-                  onClick={goToToday}
-                  className="text-3xl font-bold text-[var(--foreground)] tracking-tight cursor-pointer hover:text-green-600 transition-colors"
-                  title="오늘 날짜로 이동"
-                >
-                  Daily Schedule
-                </h2>
-                <p className="text-sm font-medium text-gray-400 mt-1 uppercase tracking-widest">
-                  {format(viewDate, "yyyy. MM. dd eeee", { locale: ko })}
-                </p>
-              </div>
-              <button
-                onClick={goToNext}
-                className="p-2 hover:bg-[var(--input-bg)] rounded-full transition-colors text-gray-400 hover:text-green-600"
-                title="다음날"
-              >
-                <ChevronRight className="w-6 h-6" />
-              </button>
-            </div>
-          </div>
+        {/* Compact Header Section */}
+        <div className="flex items-center justify-between bg-[var(--card-bg)] p-4 rounded-2xl shadow-sm border border-[var(--card-border)] animate-in slide-in-from-top-2 duration-500">
           <div className="flex items-center gap-2">
-            <div className="bg-[var(--input-bg)] rounded-full flex items-center px-4 py-2 border border-[var(--card-border)]">
-              <span className="w-2 h-2 rounded-full bg-green-500 mr-2"></span>
-              <span className="text-sm font-semibold text-[var(--foreground)] opacity-80">진행도: {Math.round(progress)}%</span>
+            <button
+              onClick={goToPrevious}
+              className="p-2 hover:bg-[var(--input-bg)] rounded-xl transition-all text-gray-400 hover:text-green-600 active:scale-90"
+              title="이전날"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <div
+              onClick={goToToday}
+              className="px-4 py-1 text-center cursor-pointer group"
+              title="오늘 날짜로 이동"
+            >
+              <h2 className="text-xl font-black text-[var(--foreground)] tracking-tight group-hover:text-green-600 transition-colors">
+                {format(viewDate, "M월 d일", { locale: ko })}
+              </h2>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none">
+                {format(viewDate, "yyyy (eeee)", { locale: ko })}
+              </p>
             </div>
+            <button
+              onClick={goToNext}
+              className="p-2 hover:bg-[var(--input-bg)] rounded-xl transition-all text-gray-400 hover:text-green-600 active:scale-90"
+              title="다음날"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {/* Mini Progress Indicator */}
+            <div className="hidden sm:flex items-center gap-3 bg-[var(--input-bg)] px-3 py-2 rounded-xl border border-[var(--card-border)]">
+              <div className="flex flex-col items-end">
+                <span className="text-[10px] font-bold text-gray-400 leading-none mb-1">진행율</span>
+                <span className="text-xs font-black text-green-600 leading-none">{Math.round(progress)}%</span>
+              </div>
+              <div className="w-12 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-green-500 transition-all duration-500"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={goToToday}
+              className={`px-4 py-2 text-xs font-bold rounded-xl transition-all ${isSameDay(viewDate, new Date())
+                ? "bg-[var(--input-bg)] text-gray-400 cursor-default opacity-50"
+                : "bg-green-600 text-white shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95"
+                }`}
+              disabled={isSameDay(viewDate, new Date())}
+            >
+              오늘
+            </button>
           </div>
         </div>
 
         {/* Timeline List */}
-        <div className="bg-[var(--card-bg)] rounded-[24px] shadow-sm border border-[var(--card-border)] p-6 flex-1 min-h-[500px] flex flex-col">
-          <div className="flex items-center justify-between mb-8">
-            <h3 className="text-lg font-bold text-[var(--foreground)]">일정 목록</h3>
-            <div className="text-sm font-medium text-gray-400">
-              총 <span className="text-[var(--foreground)] font-bold">{totalCount}</span>개의 스케줄
+        <div className="bg-[var(--card-bg)] rounded-2xl shadow-sm border border-[var(--card-border)] p-5 flex-1 min-h-[500px] flex flex-col">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2">
+              <div className="w-1.5 h-4 bg-green-500 rounded-full" />
+              <h3 className="text-md font-bold text-[var(--foreground)]">일정 목록</h3>
+            </div>
+            <div className="text-[11px] font-bold text-gray-400 bg-[var(--input-bg)] px-2 py-1 rounded-lg">
+              TOTAL <span className="text-green-600 ml-1">{totalCount}</span>
             </div>
           </div>
 
@@ -325,7 +450,7 @@ export default function DailyView({
                                   src={url}
                                   alt="기존 이미지"
                                   className="w-full h-full object-cover cursor-pointer hover:opacity-80 transition-opacity"
-                                  onClick={() => setSelectedImageUrl(url)}
+                                  onClick={() => setSelectedImageInfo({ urls: [...editExistingUrls, ...editImagePreviews], index: idx })}
                                 />
                                 <button
                                   type="button"
@@ -344,7 +469,7 @@ export default function DailyView({
                                   src={url}
                                   alt="신규 미리보기"
                                   className="w-full h-full object-cover cursor-pointer hover:opacity-80 transition-opacity"
-                                  onClick={() => setSelectedImageUrl(url)}
+                                  onClick={() => setSelectedImageInfo({ urls: [...editExistingUrls, ...editImagePreviews], index: editExistingUrls.length + idx })}
                                 />
                                 <button
                                   type="button"
@@ -399,11 +524,11 @@ export default function DailyView({
                           <div className="flex flex-wrap gap-2 mt-2">
                             {task.image_urls.map((url, idx) => (
                               <div key={idx} className="relative w-16 h-16 rounded-xl overflow-hidden border border-[var(--card-border)] group/img">
-                                <img
+                                <ImageWithSkeleton
                                   src={url}
                                   alt={`첨부이미지 ${idx + 1}`}
-                                  className="w-full h-full object-cover cursor-pointer hover:scale-110 transition-transform"
-                                  onClick={() => setSelectedImageUrl(url)}
+                                  className="w-full h-full cursor-pointer hover:scale-110 transition-transform"
+                                  onClick={() => setSelectedImageInfo({ urls: task.image_urls!, index: idx })}
                                 />
                               </div>
                             ))}
@@ -524,7 +649,7 @@ export default function DailyView({
         {canWrite ? (
           <div className="bg-[var(--card-bg)] rounded-[24px] shadow-sm border border-[var(--card-border)] p-6">
             <h3 className="text-sm font-bold uppercase tracking-wider text-gray-400 mb-6 font-sans">
-              Add New Task
+              일정 추가
             </h3>
             <form onSubmit={handleAdd} className="space-y-5">
               <div className="space-y-2">
@@ -756,24 +881,64 @@ export default function DailyView({
       </div>
 
       {/* 🖼️ Image Modal */}
-      {selectedImageUrl && (
+      {selectedImageInfo && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-300"
-          onClick={() => setSelectedImageUrl(null)}
+          className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/90 backdrop-blur-md animate-in fade-in duration-300"
+          onClick={() => setSelectedImageInfo(null)}
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
         >
-          <div className="relative max-w-4xl w-full h-full flex items-center justify-center">
+          {/* Top Bar: Counter & Close */}
+          <div className="absolute top-0 left-0 right-0 p-6 flex items-center justify-between z-[110] bg-gradient-to-b from-black/50 to-transparent">
+            <div className="bg-white/10 backdrop-blur-md px-4 py-1.5 rounded-full border border-white/10 text-white text-xs font-bold font-mono">
+              {selectedImageInfo.index + 1} / {selectedImageInfo.urls.length}
+            </div>
             <button
-              className="absolute top-4 right-4 z-[110] p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all"
-              onClick={() => setSelectedImageUrl(null)}
+              className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all active:scale-95"
+              onClick={() => setSelectedImageInfo(null)}
             >
               <X className="w-6 h-6" />
             </button>
-            <img
-              src={selectedImageUrl}
-              alt="확대 이미지"
-              className="max-w-full max-h-full object-contain rounded-lg shadow-2xl animate-in zoom-in-95 duration-300"
-              onClick={(e) => e.stopPropagation()}
-            />
+          </div>
+
+          {/* Main Image Container */}
+          <div className="relative w-full h-full flex items-center justify-center p-4">
+            {/* Desktop Navigation Buttons */}
+            {selectedImageInfo.urls.length > 1 && (
+              <>
+                <button
+                  onClick={goToPrevImage}
+                  className="hidden sm:flex absolute left-4 z-[110] p-4 bg-white/5 hover:bg-white/15 text-white rounded-2xl transition-all border border-white/5 backdrop-blur-sm group"
+                >
+                  <ChevronLeft className="w-8 h-8 group-hover:-translate-x-1 transition-transform" />
+                </button>
+                <button
+                  onClick={goToNextImage}
+                  className="hidden sm:flex absolute right-4 z-[110] p-4 bg-white/5 hover:bg-white/15 text-white rounded-2xl transition-all border border-white/5 backdrop-blur-sm group"
+                >
+                  <ChevronRight className="w-8 h-8 group-hover:translate-x-1 transition-transform" />
+                </button>
+              </>
+            )}
+
+            {/* Image Wrapper for Slide Animation (Simplified) */}
+            <div className="relative max-w-4xl w-full h-full flex items-center justify-center overflow-hidden">
+                <ImageWithSkeleton
+                  key={selectedImageInfo.urls[selectedImageInfo.index]}
+                  src={selectedImageInfo.urls[selectedImageInfo.index]}
+                  alt="확대 이미지"
+                  className="max-w-full max-h-full rounded-lg shadow-2xl animate-in zoom-in-95 fade-in duration-300 min-w-[200px] min-h-[200px]"
+                  onClick={(e: any) => e.stopPropagation()}
+                />
+            </div>
+          </div>
+
+          {/* Bottom Bar: Swipe Hint for Mobile */}
+          <div className="sm:hidden absolute bottom-8 text-white/40 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2">
+            <div className="w-8 h-px bg-white/20" />
+            Swipe to navigate
+            <div className="w-8 h-px bg-white/20" />
           </div>
         </div>
       )}

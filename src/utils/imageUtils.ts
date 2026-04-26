@@ -14,8 +14,8 @@ export const compressImage = async (file: File, maxSizeMB: number = 1): Promise<
         let width = img.width;
         let height = img.height;
 
-        // 해상도 조절: 최대 가로/세로 1280px로 제한 (품질과 용량의 균형)
-        const MAX_SIZE = 1280;
+        // 해상도 조절: 최대 가로/세로 800px로 제한 (데이터 절약 및 로딩 속도 최적화)
+        const MAX_SIZE = 800;
         if (width > height) {
           if (width > MAX_SIZE) {
             height *= MAX_SIZE / width;
