@@ -218,7 +218,16 @@ export default function DailyView({
   }, [viewTasks]);
 
   // 🎨 스켈레톤 UI 포함 이미지 컴포넌트
-  const ImageWithSkeleton = ({ src, alt, className, onClick }: { src: string, alt: string, className?: string, onClick?: React.MouseEventHandler }) => {
+  // 🎨 스켈레톤 UI 포함 이미지 컴포넌트
+  const ImageWithSkeleton = ({ src, alt, className, onClick, onTouchStart, onTouchMove, onTouchEnd }: { 
+    src: string, 
+    alt: string, 
+    className?: string, 
+    onClick?: React.MouseEventHandler,
+    onTouchStart?: React.TouchEventHandler,
+    onTouchMove?: React.TouchEventHandler,
+    onTouchEnd?: React.TouchEventHandler
+  }) => {
     const [isLoaded, setIsLoaded] = useState(false);
 
     return (
@@ -232,6 +241,9 @@ export default function DailyView({
           onLoad={() => setIsLoaded(true)}
           className={`w-full h-full object-cover transition-opacity duration-500 ${isLoaded ? "opacity-100" : "opacity-0"}`}
           onClick={onClick}
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
         />
       </div>
     );
@@ -904,20 +916,20 @@ export default function DailyView({
 
           {/* Main Image Container */}
           <div className="relative w-full h-full flex items-center justify-center p-4">
-            {/* Desktop Navigation Buttons */}
+            {/* Navigation Buttons (Visible on both Mobile & Desktop) */}
             {selectedImageInfo.urls.length > 1 && (
               <>
                 <button
                   onClick={goToPrevImage}
-                  className="hidden sm:flex absolute left-4 z-[110] p-4 bg-white/5 hover:bg-white/15 text-white rounded-2xl transition-all border border-white/5 backdrop-blur-sm group"
+                  className="absolute left-2 sm:left-4 z-[110] p-3 sm:p-4 bg-black/20 hover:bg-black/40 text-white rounded-full sm:rounded-2xl transition-all border border-white/10 backdrop-blur-sm group active:scale-90"
                 >
-                  <ChevronLeft className="w-8 h-8 group-hover:-translate-x-1 transition-transform" />
+                  <ChevronLeft className="w-6 h-6 sm:w-8 sm:h-8 group-hover:-translate-x-1 transition-transform" />
                 </button>
                 <button
                   onClick={goToNextImage}
-                  className="hidden sm:flex absolute right-4 z-[110] p-4 bg-white/5 hover:bg-white/15 text-white rounded-2xl transition-all border border-white/5 backdrop-blur-sm group"
+                  className="absolute right-2 sm:right-4 z-[110] p-3 sm:p-4 bg-black/20 hover:bg-black/40 text-white rounded-full sm:rounded-2xl transition-all border border-white/10 backdrop-blur-sm group active:scale-90"
                 >
-                  <ChevronRight className="w-8 h-8 group-hover:translate-x-1 transition-transform" />
+                  <ChevronRight className="w-6 h-6 sm:w-8 sm:h-8 group-hover:translate-x-1 transition-transform" />
                 </button>
               </>
             )}
@@ -929,7 +941,10 @@ export default function DailyView({
                   src={selectedImageInfo.urls[selectedImageInfo.index]}
                   alt="확대 이미지"
                   className="max-w-full max-h-full rounded-lg shadow-2xl animate-in zoom-in-95 fade-in duration-300 min-w-[200px] min-h-[200px]"
-                  onClick={(e: any) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
+                  onTouchStart={onTouchStart}
+                  onTouchMove={onTouchMove}
+                  onTouchEnd={onTouchEnd}
                 />
             </div>
           </div>
