@@ -943,15 +943,14 @@ export default function DailyView({
             {/* Image Wrapper for Slide Animation (Simplified) */}
             <div className="relative max-w-4xl w-full h-full flex items-center justify-center overflow-hidden">
                 <ImageWithSkeleton
-                  key={selectedImageInfo.urls[selectedImageInfo.index]}
-                  src={selectedImageInfo.urls[selectedImageInfo.index]}
-                  alt="확대 이미지"
-                  className="max-w-full max-h-full rounded-lg shadow-2xl animate-in zoom-in-95 fade-in duration-300 min-w-[200px] min-h-[200px]"
-                  onClick={(e) => e.stopPropagation()}
-                  onTouchStart={onTouchStart}
-                  onTouchMove={onTouchMove}
-                  onTouchEnd={onTouchEnd}
-                />
+                   src={selectedImageInfo.urls[selectedImageInfo.index]}
+                   alt="확대 이미지"
+                   className="max-w-full max-h-full rounded-lg shadow-2xl transition-all duration-300 min-w-[200px] min-h-[200px]"
+                   onClick={(e) => e.stopPropagation()}
+                   onTouchStart={onTouchStart}
+                   onTouchMove={onTouchMove}
+                   onTouchEnd={onTouchEnd}
+                 />
             </div>
           </div>
 
