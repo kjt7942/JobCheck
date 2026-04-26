@@ -218,7 +218,7 @@ export default function DailyView({
   }, [viewTasks]);
 
   // 🎨 스켈레톤 UI 포함 이미지 컴포넌트
-  const ImageWithSkeleton = ({ src, alt, className, onClick }: { src: string, alt: string, className?: string, onClick?: () => void }) => {
+  const ImageWithSkeleton = ({ src, alt, className, onClick }: { src: string, alt: string, className?: string, onClick?: React.MouseEventHandler }) => {
     const [isLoaded, setIsLoaded] = useState(false);
 
     return (
