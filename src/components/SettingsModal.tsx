@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Save, Home, Sprout, CalendarDays, Sun, Moon, LogOut, Users, Shield, ShieldCheck, Trash2, Loader2, Check, Lock, Unlock, Bell } from "lucide-react";
+import { X, Save, Home, Sprout, CalendarDays, Sun, Moon, LogOut, Users, Shield, ShieldCheck, Trash2, Loader2, Check, Lock, Unlock, Bell, MapPin, Compass } from "lucide-react";
 import { UserSettings } from "@/types";
 import { adminService } from "@/services/adminService";
 import { useApp } from "@/providers/AppProvider";
@@ -10,6 +10,8 @@ import { firestoreRepo } from "@/repo/firestoreRepository";
 interface FarmInfo {
   name: string;
   region: string;
+  latitude: number;
+  longitude: number;
   weekStartsOn?: 0 | 1;
   theme?: 'light' | 'dark';
 }
@@ -33,11 +35,34 @@ export default function SettingsModal({ isOpen, onClose, farmInfo: initialInfo, 
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [processingUid, setProcessingUid] = useState<string | null>(null);
 
+  // 🚀 스마트폰의 내장 GPS 센서와 연동하여 현장에서 위경도 자동 연동
+  const fetchCurrentGPS = () => {
+    if (!navigator.geolocation) {
+      showToast("이 기기나 브라우저에서는 위치 서비스(GPS)를 사용할 수 없습니다.", "error");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setInfo(prev => ({
+          ...prev,
+          latitude: parseFloat(position.coords.latitude.toFixed(4)),
+          longitude: parseFloat(position.coords.longitude.toFixed(4))
+        }));
+        showToast("📍 대장님의 현재 폰 위치 GPS 좌표를 완벽히 가져왔습니다!");
+      },
+      (error) => {
+        showToast("GPS 위치 정보를 수집하는 데 실패했습니다. 설정에서 GPS를 활성화해 주세요.", "error");
+      }
+    );
+  };
+
   useEffect(() => {
     if (!initialInfo) return;
 
     setInfo({
       ...initialInfo,
+      latitude: initialInfo.latitude ?? 36.3504,
+      longitude: initialInfo.longitude ?? 127.3845,
       weekStartsOn: initialInfo.weekStartsOn ?? 1,
       theme: initialInfo.theme ?? 'light'
     });
@@ -197,8 +222,62 @@ export default function SettingsModal({ isOpen, onClose, farmInfo: initialInfo, 
                   value={info.name}
                   onChange={(e) => setInfo({ ...info, name: e.target.value })}
                   placeholder="예: 푸른 들판 농원"
-                  className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-2xl px-5 py-4 text-sm font-medium text-[var(--foreground)] focus:outline-none focus:ring-4 focus:ring-green-400/10 focus:border-green-500 transition-all"
+                  className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-2xl px-5 py-4 text-sm font-medium text-[var(--foreground)] focus:outline-none focus:ring-4 focus:ring-green-400/10 focus:border-green-500 transition-all font-bold"
                 />
+              </div>
+
+              {/* 📍 Farm Location / Address */}
+              <div className="space-y-3">
+                <label className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">
+                  <MapPin className="w-3.5 h-3.5" />
+                  농장 위치 (지역명/행정 주소)
+                </label>
+                <input
+                  type="text"
+                  value={info.region}
+                  onChange={(e) => setInfo({ ...info, region: e.target.value })}
+                  placeholder="예: 대전, 경북 문경 등"
+                  className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-2xl px-5 py-4 text-sm font-medium text-[var(--foreground)] focus:outline-none focus:ring-4 focus:ring-green-400/10 focus:border-green-500 transition-all font-bold"
+                />
+              </div>
+
+              {/* 🧭 Farm GPS Coordinates */}
+              <div className="space-y-3 pt-2 border-t border-[var(--card-border)]">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">
+                    <Compass className="w-3.5 h-3.5" />
+                    농장 GPS 경위도 좌표
+                  </label>
+                  <button
+                    type="button"
+                    onClick={fetchCurrentGPS}
+                    className="flex items-center gap-1 text-[10px] font-black text-blue-600 bg-blue-500/10 border border-blue-500/20 px-2.5 py-1.5 rounded-xl hover:bg-blue-500/20 transition-all active:scale-95"
+                  >
+                    📱 내 현재 폰 위치 연동
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">위도 (Latitude)</label>
+                    <input
+                      type="number"
+                      step="0.0001"
+                      value={info.latitude}
+                      onChange={(e) => setInfo({ ...info, latitude: parseFloat(e.target.value) || 0 })}
+                      className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-2xl px-4 py-3 text-sm text-[var(--foreground)] font-bold focus:outline-none text-center"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">경도 (Longitude)</label>
+                    <input
+                      type="number"
+                      step="0.0001"
+                      value={info.longitude}
+                      onChange={(e) => setInfo({ ...info, longitude: parseFloat(e.target.value) || 0 })}
+                      className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-2xl px-4 py-3 text-sm text-[var(--foreground)] font-bold focus:outline-none text-center"
+                    />
+                  </div>
+                </div>
               </div>
 
               {/* Week Start Day */}

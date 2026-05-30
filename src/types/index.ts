@@ -1,3 +1,9 @@
+export interface RecurrenceRule {
+  type: "DAILY" | "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "CUSTOM";
+  interval: number;
+  end_date: string; // ISO 8601 반복 종료일
+}
+
 /**
  * 꿀송이농장 공통 작업(할일) 타입
  */
@@ -13,6 +19,12 @@ export interface Job {
   weather?: string;     // 날씨 설명 (맑음, 흐림 등)
   image_urls?: string[]; // 첨부된 이미지 URL 리스트
   created_at: number;   // 생성 시간 (timestamp)
+  
+  // 🚀 [2단계: 마스터-인스턴스 핵심 추가 필드]
+  recurrence?: RecurrenceRule; // 반복 규칙 (이 필드가 있으면 반복 마스터 일정)
+  is_instance?: boolean;       // 특정 날짜에 데이터가 변경되어 생성된 인스턴스 여부
+  instance_date?: string;     // 인스턴스가 적용되는 구체적 날짜 (YYYY-MM-DD)
+  is_cancelled?: boolean;     // 특정 날짜의 반복 일정이 삭제되었는지 여부
 }
 
 /**

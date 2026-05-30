@@ -70,10 +70,13 @@ export default function Home() {
   const handleSettingsSave = async (info: any) => {
     if (!user || !settings) return;
     try {
-      // UI 필드(name, weekStartsOn)를 DB 필드(farm_name, start_day)로 매핑
+      // UI 필드(name, weekStartsOn, region, latitude, longitude)를 DB 필드(farm_name, start_day, location 등)로 매핑
       const newSettings: UserSettings = {
         ...settings,
         farm_name: info.name,
+        location: info.region,
+        latitude: info.latitude,
+        longitude: info.longitude,
         start_day: info.weekStartsOn,
         theme: info.theme,
         updated_at: Date.now()
@@ -92,7 +95,19 @@ export default function Home() {
     }
   };
 
-  const handleAddTask = async (task: string, date: string, weather?: string, temp_max?: string | number, temp_min?: string | number, group_id?: string, imageFiles?: File[]) => {
+  const handleAddTask = async (
+    task: string, 
+    date: string, 
+    weather?: string, 
+    temp_max?: string | number, 
+    temp_min?: string | number, 
+    group_id?: string, 
+    imageFiles?: File[],
+    recurrence?: any,
+    is_instance?: boolean,
+    instance_date?: string,
+    is_cancelled?: boolean
+  ) => {
     if (!user) return;
 
     // 권한 체크
@@ -112,6 +127,10 @@ export default function Home() {
         weather: weather || "",
         temp_max: typeof temp_max === 'string' ? parseFloat(temp_max) : temp_max,
         temp_min: typeof temp_min === 'string' ? parseFloat(temp_min) : temp_min,
+        recurrence: recurrence || undefined,
+        is_instance: is_instance || undefined,
+        instance_date: instance_date || undefined,
+        is_cancelled: is_cancelled || undefined,
       }, imageFiles);
       showToast("새로운 일정이 등록되었습니다.");
     } catch (e) {
@@ -308,6 +327,8 @@ export default function Home() {
         farmInfo={{
           name: settings?.farm_name ?? "꿀송이농장",
           region: settings?.location ?? "경상북도 문경시",
+          latitude: settings?.latitude ?? 36.3504,
+          longitude: settings?.longitude ?? 127.3845,
           weekStartsOn: (settings?.start_day as 0 | 1) ?? 1,
           theme: (settings?.theme as 'light' | 'dark') ?? 'light'
         }}

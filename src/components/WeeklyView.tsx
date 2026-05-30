@@ -123,6 +123,110 @@ export default function WeeklyView({
   const goToNextWeek = () => setViewDate(prev => addWeeks(prev, 1));
   const goToCurrentWeek = () => setViewDate(new Date());
 
+  // 🚀 주간 일정용 실시간 가상 일정 복원 렌더링 엔진 (오버라이드, 취소 필터링 완벽 적용)
+  const getTasksForDate = (targetDate: Date) => {
+    const list: Job[] = [];
+    const instancesByGroupDate = new Map<string, Job>();
+    const cancelledByGroupDate = new Set<string>();
+
+    // 1. 실제 인스턴스 및 취소 처리된 건들을 사전 분류하여 Map/Set에 저장
+    tasks.forEach(t => {
+      if (t.is_instance && t.instance_date) {
+        const key = `${t.group_id}_${t.instance_date}`;
+        instancesByGroupDate.set(key, t);
+      }
+      if (t.is_cancelled && t.instance_date) {
+        const key = `${t.group_id}_${t.instance_date}`;
+        cancelledByGroupDate.add(key);
+      }
+    });
+
+    const targetDateStr = format(targetDate, "yyyy-MM-dd");
+
+    // 2. 전체 DB 데이터를 순회하며 오늘 보여줄 일정 계산
+    tasks.forEach(t => {
+      // 2-1. 개별 변경된 인스턴스나 삭제 기록은 직접 삽입 보류
+      if (t.is_instance || t.is_cancelled) {
+        if (t.is_instance && !t.is_cancelled && format(new Date(t.date), "yyyy-MM-dd") === targetDateStr) {
+          if (!list.some(existing => existing.id === t.id)) {
+            list.push(t);
+          }
+        }
+        return;
+      }
+
+      // 2-2. 일반 일정 (반복 설정이 없음) -> 단순 날짜 비교 (타임존 오류 원천 차단)
+      if (!t.recurrence) {
+        if (format(new Date(t.date), "yyyy-MM-dd") === targetDateStr) {
+          list.push(t);
+        }
+        return;
+      }
+
+      // 2-3. 반복 마스터 일정 -> 동적 가상 일정 연산
+      const masterStartDate = new Date(t.date);
+      const masterEndDate = new Date(t.recurrence.end_date);
+      
+      // 조회일이 반복 범위(시작일~종료일) 밖이면 노출 대상 아님
+      const viewDateOnly = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
+      const startDateOnly = new Date(masterStartDate.getFullYear(), masterStartDate.getMonth(), masterStartDate.getDate());
+      const endDateOnly = new Date(masterEndDate.getFullYear(), masterEndDate.getMonth(), masterEndDate.getDate());
+
+      if (viewDateOnly < startDateOnly || viewDateOnly > endDateOnly) {
+        return;
+      }
+
+      // 예외 인스턴스(오늘 날짜에 삭제된 건이 있는지) 체크
+      const key = `${t.group_id}_${targetDateStr}`;
+      if (cancelledByGroupDate.has(key)) {
+        return; // 삭제 처리 완료 -> 화면 노출 건너뜀
+      }
+
+      // 가상 일정 오버라이드 체크 (이미 값을 수정해서 실제 인스턴스로 바뀐 게 있는지)
+      const instanceOverride = instancesByGroupDate.get(key);
+      if (instanceOverride) {
+        if (format(new Date(instanceOverride.date), "yyyy-MM-dd") === targetDateStr) {
+          list.push(instanceOverride);
+        }
+        return;
+      }
+
+      // 주기에 따라 오늘 렌더링할 것인지 수학적 연산
+      let shouldRender = false;
+      const diffDays = Math.floor((viewDateOnly.getTime() - startDateOnly.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (diffDays >= 0) {
+        const type = t.recurrence.type;
+        const interval = t.recurrence.interval || 1;
+
+        if (type === "DAILY") {
+          shouldRender = (diffDays % interval === 0);
+        } else if (type === "WEEKLY") {
+          shouldRender = (diffDays % (7 * interval) === 0);
+        } else if (type === "BIWEEKLY") {
+          shouldRender = (diffDays % (14 * interval) === 0);
+        } else if (type === "MONTHLY") {
+          const targetMonthDays = (viewDateOnly.getFullYear() - startDateOnly.getFullYear()) * 12 + (viewDateOnly.getMonth() - startDateOnly.getMonth());
+          shouldRender = (targetMonthDays % interval === 0 && viewDateOnly.getDate() === startDateOnly.getDate());
+        } else if (type === "CUSTOM") {
+          shouldRender = (diffDays % interval === 0);
+        }
+      }
+
+      if (shouldRender) {
+        // 가상 일정 렌더링용 객체 조립 (가상 ID 생성)
+        list.push({
+          ...t,
+          id: `${t.id}.${targetDateStr}`, // virtual id
+          date: new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), masterStartDate.getHours(), masterStartDate.getMinutes()).toISOString(),
+          instance_date: targetDateStr
+        });
+      }
+    });
+
+    return list.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  };
+
   const startEdit = (job: Job) => {
     setEditingId(job.id!);
     setEditTitle(job.task);
@@ -182,122 +286,131 @@ export default function WeeklyView({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
+      {/* 🚀 세로형 와이드 타임라인 카드 그리드 시스템 구축 (말줄임 현상 완전 타파) */}
+      <div className="flex flex-col space-y-4">
         {weekDays.map((day) => {
-          const dayTasks = tasks.filter((t) => isSameDay(new Date(t.date), day));
+          const dayTasks = getTasksForDate(day);
           const isToday = isSameDay(day, new Date());
 
           return (
             <div
               key={day.toISOString()}
-              className={`flex flex-col rounded-2xl border transition-all duration-300 min-h-[300px] ${isToday
-                ? "bg-green-500/5 border-green-500/30 shadow-sm ring-1 ring-green-500/20"
+              className={`flex flex-col md:flex-row rounded-2xl border transition-all duration-300 ${isToday
+                ? "bg-green-500/5 border-green-500/30 shadow-md ring-1 ring-green-500/20"
                 : "bg-[var(--card-bg)] border-[var(--card-border)] hover:border-green-500/30 shadow-sm"
                 }`}
             >
-              {/* Day Header */}
-              <div className={`p-4 border-b ${isToday ? "border-green-500/20" : "border-[var(--card-border)]"}`}>
-                <div className="flex flex-col">
-                  <span className={`text-xs font-bold uppercase tracking-wider ${isToday ? "text-green-600" : "text-gray-400"}`}>
+              {/* Day Header - Left layout on Desktop, top on Mobile */}
+              <div className={`p-5 flex flex-row md:flex-col items-center justify-between md:justify-center md:w-[150px] shrink-0 border-b md:border-b-0 md:border-r ${isToday ? "border-green-500/20 bg-green-500/10" : "border-[var(--card-border)] bg-[var(--input-bg)]/30"} rounded-t-2xl md:rounded-t-none md:rounded-l-2xl`}>
+                <div className="text-center md:w-full">
+                  <span className={`text-[10px] md:text-xs font-bold uppercase tracking-wider block ${isToday ? "text-green-600" : "text-gray-400"}`}>
                     {format(day, "EEEE", { locale: ko })}
                   </span>
-                  <span className={`text-xl font-black ${isToday ? "text-green-600" : "text-[var(--foreground)]"}`}>
-                    {format(day, "d")}
+                  <span className={`text-xl md:text-2xl font-black block mt-0.5 ${isToday ? "text-green-600 scale-105" : "text-[var(--foreground)]"}`}>
+                    {format(day, "M/d")}
                   </span>
                 </div>
+                {isToday && (
+                  <span className="px-2 py-0.5 text-[9px] font-black bg-green-500 text-white rounded-full uppercase tracking-widest mt-1 md:mt-2">
+                    오늘
+                  </span>
+                )}
               </div>
 
-              {/* Day Body */}
-              <div className="flex-1 p-2 space-y-2 overflow-y-auto max-h-[400px]">
+              {/* Day Body - Right flex-1 container */}
+              <div className="flex-1 p-5 space-y-2">
                 {dayTasks.length === 0 ? (
-                  <div className="h-full flex items-center justify-center py-10 opacity-20 group">
-                    <div className="w-8 h-8 rounded-full border-2 border-dashed border-gray-300" />
+                  <div className="py-8 flex items-center justify-center text-gray-400 text-xs border border-dashed border-[var(--card-border)] rounded-xl opacity-50">
+                    계획된 농장 일과가 없습니다.
                   </div>
                 ) : (
-                  dayTasks.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map((task) => (
-                    <div
-                      key={task.id}
-                      className="group relative bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl p-3 hover:bg-[var(--card-bg)] hover:shadow-md hover:border-green-500/30 transition-all"
-                    >
-                      {editingId === task.id ? (
-                        <div className="space-y-2 animate-in fade-in zoom-in-95 duration-200">
-                          <input
-                            type="text"
-                            value={editTitle}
-                            onChange={(e) => setEditTitle(e.target.value)}
-                            className="w-full bg-white border border-green-200 rounded-lg px-2 py-1 text-xs focus:ring-1 focus:ring-green-400 outline-none"
-                            autoFocus
-                          />
-                          <div className="flex items-center gap-1">
-                            <Clock className="w-3 h-3 text-green-500" />
-                            <DatePicker
-                              selected={editDate}
-                              onChange={(date: Date | null) => setEditDate(date)}
-                              showTimeSelect
-                              showTimeSelectOnly
-                              timeIntervals={15}
-                              dateFormat="HH:mm"
-                              locale="ko"
-                              className="bg-white border border-green-200 rounded-lg px-1 py-0.5 text-[10px] outline-none w-16 cursor-pointer"
+                  <div className="grid grid-cols-1 gap-3">
+                    {dayTasks.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map((task) => (
+                      <div
+                        key={task.id}
+                        className="group relative bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl p-4 hover:bg-[var(--card-bg)] hover:shadow-md hover:border-green-500/30 transition-all"
+                      >
+                        {editingId === task.id ? (
+                          <div className="space-y-2 animate-in fade-in zoom-in-95 duration-200">
+                            <input
+                              type="text"
+                              value={editTitle}
+                              onChange={(e) => setEditTitle(e.target.value)}
+                              className="w-full bg-white border border-green-200 rounded-lg px-2 py-1.5 text-xs focus:ring-1 focus:ring-green-400 outline-none"
+                              autoFocus
                             />
+                            <div className="flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-green-500" />
+                              <DatePicker
+                                selected={editDate}
+                                onChange={(date: Date | null) => setEditDate(date)}
+                                showTimeSelect
+                                showTimeSelectOnly
+                                timeIntervals={15}
+                                dateFormat="HH:mm"
+                                locale="ko"
+                                className="bg-white border border-green-200 rounded-lg px-1 py-0.5 text-[10px] outline-none w-16 cursor-pointer"
+                              />
+                            </div>
+                            <div className="flex gap-1 justify-end">
+                              <button onClick={() => handleSaveEdit(task.id!)} className="p-1 rounded bg-green-500 text-white hover:bg-green-600"><Save className="w-3 h-3" /></button>
+                              <button onClick={cancelEdit} className="p-1 rounded bg-gray-100 text-gray-500 hover:bg-gray-200"><X className="w-3 h-3" /></button>
+                            </div>
                           </div>
-                          <div className="flex gap-1 justify-end">
-                            <button onClick={() => handleSaveEdit(task.id!)} className="p-1 rounded bg-green-500 text-white hover:bg-green-600"><Save className="w-3 h-3" /></button>
-                            <button onClick={cancelEdit} className="p-1 rounded bg-gray-100 text-gray-500 hover:bg-gray-200"><X className="w-3 h-3" /></button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-start gap-2">
-                          <div className={`mt-0.5 transition-colors ${task.is_done ? "text-green-500" : "text-gray-300"}`}>
-                            {task.is_done
-                              ? <Check className="w-4 h-4" />
-                              : <Circle className="w-4 h-4" />
-                            }
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className={`text-sm font-bold leading-tight truncate flex items-center gap-1 ${task.is_done ? "text-gray-400 line-through opacity-50" : "text-[var(--foreground)]"}`}>
-                              {task.task}
-                            </p>
-                            <div className="flex items-center gap-2 mt-1">
-                              <p className="text-[10px] text-gray-400 font-mono">
-                                {format(new Date(task.date), "HH:mm")}
+                        ) : (
+                          <div className="flex items-start gap-3">
+                            <div className={`mt-0.5 transition-colors ${task.is_done ? "text-green-500" : "text-gray-300"}`}>
+                              {task.is_done
+                                ? <Check className="w-4 h-4" />
+                                : <Circle className="w-4 h-4" />
+                              }
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              {/* 💡 whitespace-pre-wrap 및 말줄임 제거를 통해 일정 전체 내용 온전히 표시 */}
+                              <p className={`text-sm font-bold leading-relaxed whitespace-pre-wrap break-all ${task.is_done ? "text-gray-400 line-through opacity-50" : "text-[var(--foreground)]"}`}>
+                                {task.task}
                               </p>
-                              {task.image_urls && task.image_urls.length > 0 && (
+                              <div className="flex items-center gap-2 mt-1.5">
+                                <p className="text-[10px] text-gray-400 font-mono">
+                                  {format(new Date(task.date), "HH:mm")}
+                                </p>
+                                {task.image_urls && task.image_urls.length > 0 && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedImageInfo({ urls: task.image_urls!, index: 0 });
+                                    }}
+                                    className="flex items-center gap-0.5 text-green-500 font-bold hover:bg-green-500/10 px-1.5 py-0.5 rounded transition-all active:scale-95"
+                                  >
+                                    <Camera className="w-3 h-3" />
+                                    <span className="text-[10px]">{task.image_urls.length}</span>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all shrink-0">
+                              {canWrite && (
                                 <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSelectedImageInfo({ urls: task.image_urls!, index: 0 });
-                                  }}
-                                  className="flex items-center gap-0.5 text-green-500 font-bold hover:bg-green-500/10 px-1 rounded transition-all active:scale-95"
+                                  onClick={(e) => { e.stopPropagation(); startEdit(task); }}
+                                  className="p-1.5 text-gray-400 hover:text-green-500 hover:bg-green-500/10 rounded-md transition-all"
                                 >
-                                  <Camera className="w-3 h-3" />
-                                  <span className="text-[10px]">{task.image_urls.length}</span>
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {canDelete && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); onDelete(task.id!); }}
+                                  className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-md transition-all"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               )}
                             </div>
                           </div>
-                          <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                            {canWrite && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); startEdit(task); }}
-                                className="p-1 text-gray-400 hover:text-green-500 hover:bg-green-500/10 rounded-md transition-all"
-                              >
-                                <Edit2 className="w-3 h-3" />
-                              </button>
-                            )}
-                            {canDelete && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); onDelete(task.id!); }}
-                                className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-md transition-all"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>

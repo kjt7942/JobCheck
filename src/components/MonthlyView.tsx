@@ -110,6 +110,112 @@ export default function MonthlyView({
     };
   }, [selectedImageInfo]);
 
+  // 🚀 월간 달력용 실시간 가상 일정 복원 렌더링 엔진 (오버라이드, 취소 필터링 완벽 적용)
+  const getTasksForDate = (targetDate: Date) => {
+    const list: Job[] = [];
+    const instancesByGroupDate = new Map<string, Job>();
+    const cancelledByGroupDate = new Set<string>();
+
+    // 1. 실제 인스턴스 및 취소 처리된 건들을 사전 분류하여 Map/Set에 저장
+    tasks.forEach(t => {
+      if (t.is_instance && t.instance_date) {
+        const key = `${t.group_id}_${t.instance_date}`;
+        instancesByGroupDate.set(key, t);
+      }
+      if (t.is_cancelled && t.instance_date) {
+        const key = `${t.group_id}_${t.instance_date}`;
+        cancelledByGroupDate.add(key);
+      }
+    });
+
+    const targetDateStr = format(targetDate, "yyyy-MM-dd");
+
+    // 2. 전체 DB 데이터를 순회하며 오늘 보여줄 일정 계산
+    tasks.forEach(t => {
+      // 2-1. 개별 변경된 인스턴스나 삭제 기록은 직접 삽입 보류
+      // -> 단, 날짜가 수정된 단독 인스턴스는 날짜가 맞으면 보여줘야 함!
+      if (t.is_instance || t.is_cancelled) {
+        if (t.is_instance && !t.is_cancelled && format(new Date(t.date), "yyyy-MM-dd") === targetDateStr) {
+          if (!list.some(existing => existing.id === t.id)) {
+            list.push(t);
+          }
+        }
+        return;
+      }
+
+      // 2-2. 일반 일정 (반복 설정이 없음) -> 단순 날짜 비교 (타임존 오류 원천 차단)
+      if (!t.recurrence) {
+        if (format(new Date(t.date), "yyyy-MM-dd") === targetDateStr) {
+          list.push(t);
+        }
+        return;
+      }
+
+      // 2-3. 반복 마스터 일정 -> 동적 가상 일정 연산
+      const masterStartDate = new Date(t.date);
+      const masterEndDate = new Date(t.recurrence.end_date);
+      
+      // 조회일이 반복 범위(시작일~종료일) 밖이면 노출 대상 아님
+      const viewDateOnly = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
+      const startDateOnly = new Date(masterStartDate.getFullYear(), masterStartDate.getMonth(), masterStartDate.getDate());
+      const endDateOnly = new Date(masterEndDate.getFullYear(), masterEndDate.getMonth(), masterEndDate.getDate());
+
+      if (viewDateOnly < startDateOnly || viewDateOnly > endDateOnly) {
+        return;
+      }
+
+      // 예외 인스턴스(오늘 날짜에 삭제된 건이 있는지) 체크
+      const key = `${t.group_id}_${targetDateStr}`;
+      if (cancelledByGroupDate.has(key)) {
+        return; // 삭제 처리 완료 -> 화면 노출 건너뜀
+      }
+
+      // 가상 일정 오버라이드 체크 (이미 값을 수정해서 실제 인스턴스로 바뀐 게 있는지)
+      const instanceOverride = instancesByGroupDate.get(key);
+      if (instanceOverride) {
+        // 단, 인스턴스의 실제 날짜가 오늘(targetDateStr)과 같을 때만 오늘 리스트에 담는다!
+        if (format(new Date(instanceOverride.date), "yyyy-MM-dd") === targetDateStr) {
+          list.push(instanceOverride);
+        }
+        return;
+      }
+
+      // 주기에 따라 오늘 렌더링할 것인지 수학적 연산
+      let shouldRender = false;
+      const diffDays = Math.floor((viewDateOnly.getTime() - startDateOnly.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (diffDays >= 0) {
+        const type = t.recurrence.type;
+        const interval = t.recurrence.interval || 1;
+
+        if (type === "DAILY") {
+          shouldRender = (diffDays % interval === 0);
+        } else if (type === "WEEKLY") {
+          shouldRender = (diffDays % (7 * interval) === 0);
+        } else if (type === "BIWEEKLY") {
+          shouldRender = (diffDays % (14 * interval) === 0);
+        } else if (type === "MONTHLY") {
+          const targetMonthDays = (viewDateOnly.getFullYear() - startDateOnly.getFullYear()) * 12 + (viewDateOnly.getMonth() - startDateOnly.getMonth());
+          shouldRender = (targetMonthDays % interval === 0 && viewDateOnly.getDate() === startDateOnly.getDate());
+        } else if (type === "CUSTOM") {
+          shouldRender = (diffDays % interval === 0);
+        }
+      }
+
+      if (shouldRender) {
+        // 가상 일정 렌더링용 객체 조립 (가상 ID 생성)
+        list.push({
+          ...t,
+          id: `${t.id}.${targetDateStr}`, // virtual id
+          date: new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), masterStartDate.getHours(), masterStartDate.getMinutes()).toISOString(),
+          instance_date: targetDateStr
+        });
+      }
+    });
+
+    return list.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  };
+
   const startDay = farmInfo?.weekStartsOn ?? 1;
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(monthStart);
@@ -127,8 +233,14 @@ export default function MonthlyView({
     ...baseWeekDays.slice(0, startDay)
   ];
 
-  const selectedDayTasks = tasks.filter((t) => isSameDay(new Date(t.date), selectedDate))
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const selectedDayTasks = getTasksForDate(selectedDate);
+
+  // 🔮 조회일이 오늘보다 미래인지 여부 판정 (미래 일정 기후 정보 노출 차단용)
+  const isSelectedDateFuture = (() => {
+    const todayStr = format(new Date(), "yyyy-MM-dd");
+    const selStr = format(selectedDate, "yyyy-MM-dd");
+    return selStr > todayStr;
+  })();
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-10">
@@ -169,7 +281,7 @@ export default function MonthlyView({
         {/* Days */}
         <div className="grid grid-cols-7">
           {calendarDays.map((day, idx) => {
-            const dayTasks = tasks.filter((t) => isSameDay(new Date(t.date), day));
+            const dayTasks = getTasksForDate(day);
             const isCurrentMonth = isSameMonth(day, monthStart);
             const isToday = isSameDay(day, new Date());
             const isSelected = isSameDay(day, selectedDate);
@@ -182,14 +294,46 @@ export default function MonthlyView({
                   } ${isSelected ? "bg-green-500/5 ring-1 ring-inset ring-green-500/30" : ""} ${idx % 7 === 6 ? "border-r-0" : ""}`}
               >
                 <div className="flex justify-between items-start mb-1">
-                  <span className={`text-[11px] md:text-sm font-bold w-5 h-5 md:w-7 md:h-7 flex items-center justify-center rounded-full transition-all ${isToday
-                    ? "bg-green-600 text-white shadow-lg shadow-green-500/20 scale-105"
-                    : isSelected
-                      ? "bg-green-500/20 text-green-700"
-                      : isCurrentMonth ? "text-[var(--foreground)]" : "text-gray-400 opacity-50"
-                    }`}>
-                    {format(day, "d")}
-                  </span>
+                  <div className="flex flex-row items-center gap-0.5 sm:gap-1 flex-wrap min-w-0">
+                    <span className={`text-[10px] md:text-sm font-bold w-5 h-5 md:w-7 md:h-7 flex items-center justify-center rounded-full transition-all ${isToday
+                      ? "bg-green-600 text-white shadow-lg shadow-green-500/20 scale-105"
+                      : isSelected
+                        ? "bg-green-500/20 text-green-700"
+                        : isCurrentMonth ? "text-[var(--foreground)]" : "text-gray-400 opacity-50"
+                      }`}>
+                      {format(day, "d")}
+                    </span>
+
+                    {/* 🌦️ 월간 달력 일별 날씨 및 최고/최저기온 칩 초밀착 구겨넣기 버전 */}
+                    {(() => {
+                      const todayStr = format(new Date(), "yyyy-MM-dd");
+                      const dayStr = format(day, "yyyy-MM-dd");
+                      if (dayStr > todayStr) return null; // 미래 날짜는 날씨 표시 안함
+
+                      const weatherTask = dayTasks.find(t => t.weather || t.temp_max !== undefined || t.temp_min !== undefined);
+                      if (!weatherTask) return null;
+                      return (
+                        <div className="flex items-center gap-0.5 text-[7.5px] md:text-[9px] text-green-600 font-bold bg-green-500/5 px-0.5 md:px-1 py-0 rounded scale-[0.82] sm:scale-100 origin-left shrink-0 ml-[-2px] sm:ml-0">
+                          {weatherTask.weather && (
+                            <span className="flex items-center">
+                              {weatherTask.weather.includes("맑음") ? <Sun className="w-2 md:w-2.5 h-2 md:h-2.5 text-amber-500 shrink-0" /> :
+                               weatherTask.weather.includes("비") ? <CloudRain className="w-2 md:w-2.5 h-2 md:h-2.5 text-blue-500 shrink-0" /> :
+                               weatherTask.weather.includes("흐림") ? <Cloud className="w-2 md:w-2.5 h-2 md:h-2.5 text-gray-500 shrink-0" /> :
+                               weatherTask.weather.includes("눈") ? <CloudSnow className="w-2 md:w-2.5 h-2 md:h-2.5 text-blue-300 shrink-0" /> :
+                               <Cloud className="w-2 md:w-2.5 h-2 md:h-2.5 shrink-0" />}
+                            </span>
+                          )}
+                          {(weatherTask.temp_max !== undefined || weatherTask.temp_min !== undefined) && (
+                            <span className="flex items-center font-mono scale-[0.9] pl-0.5 shrink-0 ml-0.5 border-l border-green-500/10">
+                              {weatherTask.temp_max !== undefined && <span className="text-red-400 font-black">{weatherTask.temp_max}</span>}
+                              {weatherTask.temp_max !== undefined && weatherTask.temp_min !== undefined && <span className="text-gray-400 opacity-40 mx-[0.5px]">/</span>}
+                              {weatherTask.temp_min !== undefined && <span className="text-blue-400 font-black">{weatherTask.temp_min}</span>}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
                   {dayTasks.length > 0 && (
                     <span className="text-[8px] md:text-[10px] bg-green-500/10 text-green-600 px-1 md:px-1.5 py-0.5 rounded font-bold">
                       {dayTasks.length}
@@ -282,10 +426,26 @@ export default function MonthlyView({
                     )}
                   </p>
                 </div>
-                {task.weather && (
-                  <span className="text-[10px] bg-green-500/10 text-green-600 px-1.5 py-0.5 rounded font-bold">
-                    {task.weather}
-                  </span>
+                {!isSelectedDateFuture && (task.weather || task.temp_max !== undefined || task.temp_min !== undefined) && (
+                  <div className="flex flex-col items-end gap-0.5 text-[10px] bg-green-500/10 text-green-600 px-2.5 py-1 rounded-xl font-bold shrink-0">
+                    {task.weather && (
+                      <span className="flex items-center gap-0.5">
+                        {task.weather.includes("맑음") ? <Sun className="w-3 h-3 text-amber-500 shrink-0" /> :
+                         task.weather.includes("비") ? <CloudRain className="w-3 h-3 text-blue-500 shrink-0" /> :
+                         task.weather.includes("흐림") ? <Cloud className="w-3 h-3 text-gray-500 shrink-0" /> :
+                         task.weather.includes("눈") ? <CloudSnow className="w-3 h-3 text-blue-300 shrink-0" /> :
+                         <Cloud className="w-3 h-3 shrink-0" />}
+                        {task.weather}
+                      </span>
+                    )}
+                    {(task.temp_max !== undefined || task.temp_min !== undefined) && (
+                      <span className="flex items-center font-mono text-[9px] mt-0.5">
+                        {task.temp_max !== undefined && <span className="text-red-400">{task.temp_max}℃</span>}
+                        {task.temp_max !== undefined && task.temp_min !== undefined && <span className="text-gray-400 opacity-50 mx-0.5">/</span>}
+                        {task.temp_min !== undefined && <span className="text-blue-400">{task.temp_min}℃</span>}
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
             ))

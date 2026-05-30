@@ -168,18 +168,29 @@ export class FirestoreRepository {
     });
   }
 
+  private cleanUndefined(obj: any): any {
+    const cleaned = { ...obj };
+    Object.keys(cleaned).forEach(key => {
+      if (cleaned[key] === undefined) {
+        delete cleaned[key];
+      }
+    });
+    return cleaned;
+  }
+
   async addJob(job: Omit<Job, "id" | "created_at">): Promise<string> {
-    const newJob = {
+    const newJob = this.cleanUndefined({
       ...job,
       created_at: Date.now()
-    };
+    });
     const docRef = await addDoc(this.jobsCol, newJob);
     return docRef.id;
   }
 
   async updateJob(id: string, updates: Partial<Job>): Promise<void> {
     const docRef = doc(this.jobsCol, id);
-    await updateDoc(docRef, updates);
+    const cleanedUpdates = this.cleanUndefined(updates);
+    await updateDoc(docRef, cleanedUpdates);
   }
 
   async deleteJob(id: string): Promise<void> {
