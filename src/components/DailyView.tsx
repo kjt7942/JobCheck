@@ -1322,11 +1322,11 @@ export default function DailyView({
       {/* 📱 모바일 최적화 수정 보텀 시트 모달 */}
       {editingId && (
         <div 
-          className="fixed inset-0 z-[150] flex items-end justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-300"
+          className="fixed inset-0 z-[150] flex items-center justify-center px-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300"
           onClick={cancelEdit}
         >
           <div 
-            className="w-full max-w-md bg-[var(--card-bg)] rounded-t-[32px] p-6 shadow-2xl border-t border-[var(--card-border)] flex flex-col animate-in slide-in-from-bottom duration-300 max-h-[85vh] md:max-h-[90vh]"
+            className="w-full max-w-md bg-[var(--card-bg)] rounded-[32px] p-6 shadow-2xl border border-[var(--card-border)] flex flex-col animate-in zoom-in-95 duration-300 max-h-[85vh] md:max-h-[90vh]"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
