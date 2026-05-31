@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 // 🌍 네이버 실시간 날씨 검색 파싱 서버 라우트 핸들러 (CORS 완벽 회피 및 100% 실시간 동기화)
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -13,7 +15,7 @@ export async function GET(request: Request) {
     console.log(`[네이버 날씨 크롤링 실행] 주소: ${address}`);
 
     const response = await fetch(naverUrl, {
-      next: { revalidate: 1800 }, // 30분 캐싱으로 네이버 트래픽 부담 완화 및 성능 극대화
+      cache: "no-store", // 30분 캐싱을 완전히 풀고 항상 실시간 네이버 다이렉트 fetch 적용
       headers: {
         // 모바일 헤더를 적용하여 아주 콤팩트하고 파싱하기 쉬운 HTML 구조 유도
         "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
