@@ -2,11 +2,11 @@
 console.log("Client: JS file evaluation started");
 
 import { useState, useEffect } from "react";
-import { CalendarDays, Calendar, ListTodo, CalendarRange, Sprout, Settings, LogOut } from "lucide-react";
+import { CalendarDays, Calendar, ListTodo, CalendarRange, Sprout, Settings, LogOut, Wrench } from "lucide-react";
 import DailyView from "@/components/DailyView";
 import MonthlyView from "@/components/MonthlyView";
-import WeeklyView from "@/components/WeeklyView";
 import YearlyView from "@/components/YearlyView";
+import ToolsView from "@/components/ToolsView";
 import SettingsModal from "@/components/SettingsModal";
 import ConfirmModal from "@/components/ConfirmModal";
 import LoginView from "@/components/LoginView";
@@ -16,7 +16,7 @@ import { authService } from "@/services/authService";
 import { firestoreRepo } from "@/repo/firestoreRepository";
 import { Job, UserSettings } from "@/types";
 
-type Tab = "daily" | "weekly" | "monthly" | "yearly";
+type Tab = "daily" | "monthly" | "yearly" | "tools";
 
 export default function Home() {
   const { user, settings, loading: authLoading, logout, showToast, refreshSettings } = useApp();
@@ -225,9 +225,9 @@ export default function Home() {
 
   const tabs = [
     { id: "daily", label: "일일 할일", icon: ListTodo },
-    { id: "weekly", label: "주간 일정", icon: CalendarDays },
     { id: "monthly", label: "월간 달력", icon: CalendarRange },
     { id: "yearly", label: "연간 일정", icon: Calendar },
+    { id: "tools", label: "영농 도구", icon: Wrench },
   ];
 
   if (authLoading) {
@@ -398,22 +398,6 @@ export default function Home() {
               />
             )}
 
-            {activeTab === "weekly" && (
-              <WeeklyView
-                tasks={tasks}
-                farmInfo={{
-                  name: settings?.farm_name,
-                  weekStartsOn: settings?.start_day ?? 1
-                }}
-                onAdd={handleAddTask}
-                onToggle={handleToggleTask}
-                onDelete={handleDeleteTask}
-                onUpdate={handleUpdateTask}
-                canWrite={settings?.role === 'admin' || settings?.permissions?.canWrite}
-                canDelete={settings?.role === 'admin' || settings?.permissions?.canDelete}
-              />
-            )}
-
             {activeTab === "monthly" && (
               <MonthlyView
                 tasks={tasks}
@@ -434,6 +418,10 @@ export default function Home() {
               <YearlyView
                 tasks={tasks}
               />
+            )}
+
+            {activeTab === "tools" && (
+              <ToolsView />
             )}
           </div>
         )}
