@@ -28,10 +28,10 @@ export async function GET(request: Request) {
     const html = await response.text();
 
     // 1. 최고/최저기온 파싱 (네이버 실시간 검색 날씨 카드 다단계 정밀 파싱)
-    let tempMax = 32; // 최고 기온 기본 디폴트
-    let tempMin = 13; // 최저 기온 기본 디폴트
+    let tempMax: number | null = null;
+    let tempMin: number | null = null;
 
-    // A. 최고기온 다단계 포격 매칭 (표준 [\s\S]*? 문자클래스로 전격 전환)
+    // A. 최고기온 다단계 포격 매칭
     const highestMatch = html.match(/최고기온\s*(-?\d+)°/);
     const highestMatch2 = html.match(/최고\s*기온\s*(-?\d+)°/);
     const desktopHigh = html.match(/class="[^"]*high[^"]*"[^>]*>(-?\d+)°/);
@@ -53,7 +53,7 @@ export async function GET(request: Request) {
       tempMax = parseInt(temperatureHigh[1], 10);
     }
 
-    // B. 최저기온 다단계 포격 매칭 (표준 [\s\S]*? 문자클래스로 전격 전환)
+    // B. 최저기온 다단계 포격 매칭
     const lowestMatch = html.match(/최저기온\s*(-?\d+)°/);
     const lowestMatch2 = html.match(/최저\s*기온\s*(-?\d+)°/);
     const desktopLow = html.match(/class="[^"]*low[^"]*"[^>]*>(-?\d+)°/);
@@ -76,7 +76,7 @@ export async function GET(request: Request) {
     }
 
     // 2. 날씨 상태 파싱
-    let weatherState = "맑음"; // 기본값
+    let weatherState: string | null = null;
     
     // 모바일 네이버 기상 텍스트 매칭 (before_slash 유무에 관계없이 칼같이 수집하도록 보강)
     const weatherMatch = html.match(/<span class="weather before_slash">([^<]+)<\/span>/);
@@ -91,7 +91,6 @@ export async function GET(request: Request) {
       weatherState = weatherMatch3[1].trim();
     } else {
       // 서브 매칭: 날씨 요약 문구에서 추출
-      // 예: <p class="summary">어제보다 2° 낮아요 · 흐림</p>
       const summaryMatch = html.match(/class="summary"[^>]*>([^<]+)<\/p>/);
       if (summaryMatch && summaryMatch[1]) {
         const summaryText = summaryMatch[1];
@@ -105,6 +104,18 @@ export async function GET(request: Request) {
           weatherState = summaryText.includes("맑음") ? "맑음" : "흐림";
         }
       }
+    }
+
+    // 🚫 기만 방지 초정밀 예외 검증 레이어 탑재
+    // 데이터 파싱에 하나라도 실패했다면, 임의의 디폴트값으로 속여서 '성공' 메시지를 띄우는 행위를 원천 중단합니다.
+    if (tempMax === null || tempMin === null || weatherState === null) {
+      const errorMsg = `기상 정보 정밀 파싱 실패 (최고기온: ${tempMax !== null ? '성공' : '실패'}, 최저기온: ${tempMin !== null ? '성공' : '실패'}, 날씨: ${weatherState !== null ? '성공' : '실패'})`;
+      console.warn(`[날씨 연동 실패 경보] ${errorMsg}`);
+      return NextResponse.json({
+        success: false,
+        error: errorMsg,
+        message: "네이버 날씨 페이지의 레이아웃 구조가 최근 변경되어 기상 정보를 읽어올 수 없습니다. 날씨와 온도를 직접 입력해 주세요!"
+      }, { status: 422 }); // 데이터 파싱 불능 상태 반환
     }
 
     // 영농 캘린더 날씨 5대 옵션 규격화 ("맑음", "흐림", "비", "바람", "눈")
@@ -123,14 +134,12 @@ export async function GET(request: Request) {
 
     console.log(`[네이버 날씨 파싱 성공] 날씨: ${finalWeather} (원본: ${weatherState}), 최고: ${tempMax}℃, 최저: ${tempMin}℃`);
 
-    // 기상청 JSON 응답 구조와 유사하게 제공하되, 파싱하기 편리한 커스텀 응답 구조 제공
     return NextResponse.json({
       success: true,
       weather: finalWeather,
       temp_max: tempMax,
       temp_min: tempMin,
       raw_state: weatherState,
-      // 기상청 API의 기존 연동 클라이언트와의 호환성을 고려한 모의 아이템 껍데기 포맷팅
       response: {
         body: {
           items: {
@@ -147,6 +156,10 @@ export async function GET(request: Request) {
 
   } catch (error: any) {
     console.error("서버 네이버 날씨 크롤링 에러:", error);
-    return NextResponse.json({ error: error.message || "네이버 날씨 정보 호출 에러" }, { status: 500 });
+    return NextResponse.json({ 
+      success: false, 
+      error: error.message || "네이버 날씨 정보 호출 에러",
+      message: "날씨 연동 서버와의 연결에 실패했습니다. 날씨 정보를 직접 수동으로 작성해 주세요!"
+    }, { status: 500 });
   }
 }
