@@ -164,7 +164,7 @@ export default function ToolsView() {
 
             {/* 결과 출력 카드 (슬림화 및 가로 배치 버전) */}
             <div className="flex flex-col justify-center bg-green-500/10 rounded-2xl border-2 border-dashed border-green-500/20 p-4 space-y-3">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center gap-3">
                 <div className="w-9 h-9 bg-green-500/20 rounded-full flex items-center justify-center text-green-600 shrink-0">
                   <CheckCircle className="w-5 h-5" />
                 </div>
