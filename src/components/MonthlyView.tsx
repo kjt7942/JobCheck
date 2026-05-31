@@ -3,6 +3,11 @@ import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInte
 import { ko } from "date-fns/locale";
 import { Job } from "@/types";
 import { Plus, Check, Trash2, Clock, Calendar as CalendarIcon, CheckCircle2, ChevronLeft, ChevronRight, Activity, Search, Edit2, X, Save, Sun, CloudRain, Cloud, CloudSnow, RefreshCw, CalendarDays, CalendarRange, Camera } from "lucide-react";
+import DatePicker, { registerLocale } from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
+import { compressImage } from "@/utils/imageUtils";
+
+registerLocale("ko", ko);
 
 // 🎨 스켈레톤 UI 포함 이미지 컴포넌트
 const ImageWithSkeleton = ({ src, alt, className, onClick, onTouchStart, onTouchMove, onTouchEnd }: { 
@@ -54,13 +59,92 @@ export default function MonthlyView({
   onAdd: (task: string, date: string) => void;
   onToggle: (id: string, is_done: boolean) => void;
   onDelete: (id: string) => void;
-  onUpdate: (id: string, updates: Partial<Job>) => void;
+  onUpdate: (id: string, updates: Partial<Job>, newImageFiles?: File[]) => void;
   canWrite?: boolean;
   canDelete?: boolean;
 }) {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedImageInfo, setSelectedImageInfo] = useState<{ urls: string[], index: number } | null>(null);
+
+  // 📝 일정 수정 상태 및 제어 함수들 (스마트 최적화)
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDate, setEditDate] = useState<Date | null>(null);
+  const [editWeather, setEditWeather] = useState("맑음");
+  const [editTmx, setEditTmx] = useState<string>("");
+  const [editTmn, setEditTmn] = useState<string>("");
+  const [editImageFiles, setEditImageFiles] = useState<File[]>([]);
+  const [editImagePreviews, setEditImagePreviews] = useState<string[]>([]);
+  const [editExistingUrls, setEditExistingUrls] = useState<string[]>([]);
+
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    const compressedFiles = await Promise.all(
+      files.map(file => compressImage(file))
+    );
+    const newPreviews = compressedFiles.map(file => URL.createObjectURL(file));
+    setEditImageFiles(prev => [...prev, ...compressedFiles]);
+    setEditImagePreviews(prev => [...prev, ...newPreviews]);
+  };
+
+  const removeImage = (index: number) => {
+    setEditImageFiles(prev => prev.filter((_, i) => i !== index));
+    URL.revokeObjectURL(editImagePreviews[index]);
+    setEditImagePreviews(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const removeExistingImage = (url: string) => {
+    setEditExistingUrls(prev => prev.filter(u => u !== url));
+  };
+
+  const startEdit = (job: Job) => {
+    setEditingId(job.id!);
+    setEditTitle(job.task);
+    setEditDate(new Date(job.date));
+    setEditWeather(job.weather || "맑음");
+    setEditTmx(job.temp_max ? String(job.temp_max) : "");
+    setEditTmn(job.temp_min ? String(job.temp_min) : "");
+    setEditImageFiles([]);
+    setEditImagePreviews([]);
+    setEditExistingUrls(job.image_urls || []);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditTitle("");
+    setEditDate(null);
+    setEditWeather("맑음");
+    setEditTmx("");
+    setEditTmn("");
+    setEditImageFiles([]);
+    setEditImagePreviews([]);
+    setEditExistingUrls([]);
+  };
+
+  const handleSaveEdit = (id: string) => {
+    if (!editTitle.trim() || !editDate) return;
+    const updates = {
+      task: editTitle.trim(),
+      date: editDate.toISOString(),
+      weather: editWeather,
+      temp_max: editTmx ? parseFloat(editTmx) : undefined,
+      temp_min: editTmn ? parseFloat(editTmn) : undefined,
+      image_urls: editExistingUrls
+    };
+
+    onUpdate(id, updates, editImageFiles);
+    setEditingId(null);
+  };
+
+  const weatherOptions = [
+    { label: "맑음", icon: <Sun className="w-4 h-4" /> },
+    { label: "흐림", icon: <Cloud className="w-4 h-4" /> },
+    { label: "비", icon: <CloudRain className="w-4 h-4" /> },
+    { label: "바람", icon: <Activity className="w-4 h-4" /> },
+    { label: "눈", icon: <CloudSnow className="w-4 h-4" /> },
+  ];
 
   // 이미지 슬라이드 이동 로직
   const goToNextImage = (e?: React.MouseEvent | React.TouchEvent) => {
@@ -423,19 +507,31 @@ export default function MonthlyView({
                       <div
                         key={task.id}
                         onClick={(e) => {
-                          if (task.image_urls && task.image_urls.length > 0) {
-                            e.stopPropagation();
-                            setSelectedImageInfo({ urls: task.image_urls, index: 0 });
+                          e.stopPropagation();
+                          if (canWrite) {
+                            startEdit(task);
                           }
                         }}
                         className={`text-[10px] px-1.5 py-0.5 rounded-md truncate border ${task.is_done
                           ? "bg-[var(--input-bg)] border-[var(--card-border)] text-gray-400 line-through opacity-50"
                           : "bg-[var(--card-bg)] border-green-500/20 text-green-600 shadow-sm"
-                          } ${task.image_urls && task.image_urls.length > 0 ? "cursor-pointer hover:bg-green-500/10 transition-colors" : ""}`}
+                          } ${canWrite ? "cursor-pointer hover:bg-green-500/10 transition-colors" : ""}`}
                       >
                         <div className="flex items-center justify-between gap-1 overflow-hidden">
                           <span className="truncate">{task.task}</span>
-                          {task.image_urls && task.image_urls.length > 0 && <Camera className="w-2.5 h-2.5 text-green-500 shrink-0" />}
+                          {task.image_urls && task.image_urls.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedImageInfo({ urls: task.image_urls!, index: 0 });
+                              }}
+                              className="hover:scale-125 active:scale-90 transition-transform p-0.5 shrink-0"
+                              title="사진 보기"
+                            >
+                              <Camera className="w-2.5 h-2.5 text-green-500" />
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -479,9 +575,18 @@ export default function MonthlyView({
                 key={task.id}
                 className={`p-4 rounded-2xl bg-[var(--card-bg)] border border-[var(--card-border)] flex items-center gap-3 transition-transform ${task.is_done ? 'opacity-60' : ''}`}
               >
-                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${task.is_done ? 'bg-green-500 border-green-500' : 'border-gray-200'}`}>
+                {/* 모바일 체크박스 토글 연동 */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (canWrite) onToggle(task.id!, !task.is_done);
+                  }}
+                  disabled={!canWrite}
+                  className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${task.is_done ? 'bg-green-500 border-green-500' : 'border-gray-200'} ${!canWrite ? 'opacity-50 cursor-default' : 'active:scale-90'}`}
+                >
                   {task.is_done && <Check className="w-3 h-3 text-white" />}
-                </div>
+                </button>
                 <div className="flex-1 min-w-0">
                   <p className={`text-sm font-bold truncate ${task.is_done ? 'text-gray-400 line-through' : 'text-gray-700'}`}>
                     {task.task}
@@ -524,6 +629,29 @@ export default function MonthlyView({
                     )}
                   </div>
                 )}
+                {/* 모바일 액션 단추 (수정/삭제) */}
+                <div className="flex items-center gap-1 shrink-0 ml-1">
+                  {canWrite && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); startEdit(task); }}
+                      className="p-1.5 text-gray-400 hover:text-green-500 hover:bg-green-500/10 rounded-lg transition-all active:scale-90"
+                      title="수정"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onDelete(task.id!); }}
+                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all active:scale-90"
+                      title="삭제"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
               </div>
             ))
           )}
@@ -598,6 +726,200 @@ export default function MonthlyView({
                 onTouchMove={onTouchMove}
                 onTouchEnd={onTouchEnd}
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 📱 모바일 최적화 수정 보텀 시트 모달 */}
+      {editingId && (
+        <div 
+          className="fixed inset-0 z-[150] flex items-center justify-center px-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300"
+          onClick={cancelEdit}
+        >
+          <div 
+            className="w-full max-w-md bg-[var(--card-bg)] rounded-[32px] p-6 shadow-2xl border border-[var(--card-border)] flex flex-col animate-in zoom-in-95 duration-300 max-h-[85vh] md:max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--card-border)] mb-4">
+              <h3 className="text-lg font-extrabold text-[var(--foreground)]">일정 수정</h3>
+              <button 
+                onClick={cancelEdit}
+                className="p-1.5 hover:bg-[var(--input-bg)] rounded-full text-gray-400 hover:text-gray-600 transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Form - 내용물만 스크롤 가능하도록 flex-1 및 overflow-y-auto 부여 */}
+            <div className="space-y-4 overflow-y-auto pr-1 flex-1 pb-4 scrollbar-thin">
+              {/* Task Title */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-gray-400 uppercase">일정 내용</label>
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-sm text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-green-400/20 focus:border-green-500 transition-all font-bold"
+                />
+              </div>
+
+              {/* Date & Time (날짜/시간 변경 완전 분리) */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-400 uppercase flex items-center gap-1">
+                    <CalendarIcon className="w-3.5 h-3.5 text-green-500" /> 날짜 변경
+                  </label>
+                  <DatePicker
+                    selected={editDate}
+                    onChange={(date: Date | null) => setEditDate(date)}
+                    dateFormat="yyyy.MM.dd"
+                    locale="ko"
+                    className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-3 py-2.5 text-sm text-[var(--foreground)] font-bold focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all cursor-pointer text-center"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-400 uppercase flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-green-500" /> 시간 변경
+                  </label>
+                  <DatePicker
+                    selected={editDate}
+                    onChange={(date: Date | null) => setEditDate(date)}
+                    showTimeSelect
+                    showTimeSelectOnly
+                    timeIntervals={15}
+                    timeCaption="시간"
+                    dateFormat="HH:mm"
+                    locale="ko"
+                    className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-3 py-2.5 text-sm text-[var(--foreground)] font-bold focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all cursor-pointer text-center"
+                  />
+                </div>
+              </div>
+
+              {/* Weather Description */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-gray-400 uppercase">날씨 선택</label>
+                <div className="grid grid-cols-5 gap-1">
+                  {weatherOptions.map((opt) => (
+                    <button
+                      key={opt.label}
+                      type="button"
+                      onClick={() => setEditWeather(opt.label)}
+                      className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all duration-300 hover:scale-105 active:scale-95 ${editWeather === opt.label
+                        ? "bg-green-600 border-green-600 text-white shadow-md shadow-green-500/10"
+                        : "bg-[var(--input-bg)] border-[var(--card-border)] text-gray-400 hover:border-green-500/30 hover:bg-[var(--card-bg)]"
+                        }`}
+                    >
+                      {opt.icon}
+                      <span className="text-[9px] mt-1 font-bold">{opt.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Temperatures */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-400 uppercase">최고 기온</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="-30"
+                      max="50"
+                      value={editTmx}
+                      onChange={(e) => setEditTmx(e.target.value)}
+                      className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-2 text-sm text-red-500 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 text-center font-extrabold"
+                    />
+                    <span className="absolute right-3 top-2 text-xs text-gray-400 font-bold">℃</span>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-400 uppercase">최저 기온</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="-30"
+                      max="50"
+                      value={editTmn}
+                      onChange={(e) => setEditTmn(e.target.value)}
+                      className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-2 text-sm text-blue-500 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 text-center font-extrabold"
+                    />
+                    <span className="absolute right-3 top-2 text-xs text-gray-400 font-bold">℃</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Image Attachments */}
+              <div className="space-y-2 pt-1">
+                <label className="text-xs font-bold text-gray-400 uppercase">사진 관리</label>
+                <div className="flex flex-wrap gap-2">
+                  {/* 기존 이미지 */}
+                  {editExistingUrls.map((url, idx) => (
+                    <div key={`existing-${idx}`} className="relative w-14 h-14 rounded-xl overflow-hidden border border-[var(--card-border)] group">
+                      <img
+                        src={url}
+                        alt="기존 이미지"
+                        className="w-full h-full object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeExistingImage(url)}
+                        className="absolute top-1 right-1 p-0.5 bg-red-500 text-white rounded-full transition-opacity shadow-md"
+                      >
+                        <X className="w-2.5 h-2.5" />
+                      </button>
+                    </div>
+                  ))}
+
+                  {/* 신규 이미지 */}
+                  {editImagePreviews.map((url, idx) => (
+                    <div key={`new-${idx}`} className="relative w-14 h-14 rounded-xl overflow-hidden border-2 border-green-500/20 group">
+                      <img
+                        src={url}
+                        alt="신규 이미지"
+                        className="w-full h-full object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeImage(idx)}
+                        className="absolute top-1 right-1 p-0.5 bg-red-500 text-white rounded-full transition-opacity shadow-md"
+                      >
+                        <X className="w-2.5 h-2.5" />
+                      </button>
+                    </div>
+                  ))}
+
+                  <label className="w-14 h-14 flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-[var(--card-border)] hover:border-green-500/50 hover:bg-green-500/5 transition-all cursor-pointer">
+                    <Camera className="w-5 h-5 text-gray-400" />
+                    <span className="text-[8px] text-gray-400 mt-0.5 font-bold">추가</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={handleImageChange}
+                    />
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3 pt-3 border-t border-[var(--card-border)] bg-[var(--card-bg)]">
+              <button
+                onClick={cancelEdit}
+                className="flex-1 bg-[var(--input-bg)] hover:bg-gray-200/50 text-gray-500 text-sm font-bold py-3.5 rounded-xl transition-all active:scale-95"
+              >
+                취소
+              </button>
+              <button
+                onClick={() => handleSaveEdit(editingId)}
+                disabled={!editTitle.trim() || !editDate}
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm font-bold py-3.5 rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-md shadow-green-600/20 active:scale-95"
+              >
+                변경사항 저장
+              </button>
             </div>
           </div>
         </div>
