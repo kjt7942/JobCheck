@@ -758,6 +758,44 @@ export default function DailyView({
     }
   };
 
+  // 💻 PC 마우스 드래그 날짜 변경 감지 로직 (PC 테스트 및 최적화)
+  const [mainMouseDown, setMainMouseDown] = useState<number | null>(null);
+  const [mainMouseEnd, setMainMouseEnd] = useState<number | null>(null);
+  const [isMouseDown, setIsMouseDown] = useState(false);
+
+  const onMainMouseDown = (e: React.MouseEvent) => {
+    if (selectedImageInfo || editingId) return;
+    const target = e.target as HTMLElement;
+    // 입력창, 버튼, 날짜 선택기 등 주요 인터랙티브 요소는 드래그 대상에서 안전하게 제외
+    if (target.closest('input') || target.closest('button') || target.closest('textarea') || target.closest('.react-datepicker') || target.closest('a')) return;
+    
+    setIsMouseDown(true);
+    setMainMouseEnd(null);
+    setMainMouseDown(e.clientX);
+  };
+
+  const onMainMouseMove = (e: React.MouseEvent) => {
+    if (!isMouseDown || selectedImageInfo || editingId) return;
+    setMainMouseEnd(e.clientX);
+  };
+
+  const onMainMouseUp = () => {
+    if (!isMouseDown) return;
+    setIsMouseDown(false);
+    
+    if (selectedImageInfo || editingId) return;
+    if (!mainMouseDown || !mainMouseEnd) return;
+    
+    const distance = mainMouseDown - mainMouseEnd;
+    const swipeThreshold = 100; // 마우스 드래그는 살짝 더 묵직하게 100px 설정
+
+    if (distance > swipeThreshold) {
+      goToNext();
+    } else if (distance < -swipeThreshold) {
+      goToPrevious();
+    }
+  };
+
   // 🔒 모달 오픈 시 배경 스크롤 방지
   useEffect(() => {
     if (selectedImageInfo) {
@@ -776,6 +814,10 @@ export default function DailyView({
       onTouchStart={onMainTouchStart}
       onTouchMove={onMainTouchMove}
       onTouchEnd={onMainTouchEnd}
+      onMouseDown={onMainMouseDown}
+      onMouseMove={onMainMouseMove}
+      onMouseUp={onMainMouseUp}
+      onMouseLeave={() => setIsMouseDown(false)} // 마우스가 화면 영역을 벗어나면 초기화
     >
 
       {/* 🚀 Left Area: Task List & Timeline (8 columns) */}
