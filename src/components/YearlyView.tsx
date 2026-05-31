@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { format, startOfYear, eachMonthOfInterval, isSameMonth, eachDayOfInterval } from "date-fns";
 import { ko } from "date-fns/locale";
-import { CalendarRange, Target, CheckCircle2, Sprout, Clock, ChevronDown, ChevronUp } from "lucide-react";
+import { CalendarRange, Target, CheckCircle2, Sprout, Clock, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from "lucide-react";
 import { Job } from "@/types";
 
 export default function YearlyView({
@@ -10,8 +10,9 @@ export default function YearlyView({
   tasks: Job[];
 }) {
   const [selectedMonth, setSelectedMonth] = useState<Date | null>(null);
-  const currentYear = new Date().getFullYear();
-  const yearStart = startOfYear(new Date());
+  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+  
+  const yearStart = startOfYear(new Date(currentYear, 0, 1));
   const months = eachMonthOfInterval({
     start: yearStart,
     end: new Date(currentYear, 11, 31),
@@ -25,16 +26,55 @@ export default function YearlyView({
     }
   };
 
+  const prevYear = () => {
+    setCurrentYear(prev => prev - 1);
+    setSelectedMonth(null);
+  };
+
+  const nextYear = () => {
+    setCurrentYear(prev => prev + 1);
+    setSelectedMonth(null);
+  };
+
+  const resetToThisYear = () => {
+    setCurrentYear(new Date().getFullYear());
+    setSelectedMonth(null);
+  };
+
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-10">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-2">
-        <div className="bg-green-500/10 p-2 rounded-xl text-green-600">
-          <CalendarRange className="w-6 h-6" />
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-4">
+        <div className="flex items-center gap-3">
+          <div className="bg-green-500/10 p-2 rounded-xl text-green-600">
+            <CalendarRange className="w-6 h-6" />
+          </div>
+          <div>
+            <h2 className="text-xl md:text-2xl font-bold text-[var(--foreground)]">{currentYear}년 농장 연간 계획</h2>
+            <p className="text-xs md:text-sm text-gray-400">올 한 해의 농사 흐름을 한눈에 확인하세요.</p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-2xl font-bold text-[var(--foreground)]">{currentYear}년 농장 연간 계획</h2>
-          <p className="text-sm text-gray-400">올 한 해의 농사 흐름을 한눈에 확인하세요.</p>
+        <div className="flex gap-2">
+          <button 
+            onClick={prevYear} 
+            className="p-2 hover:bg-green-500/10 rounded-full transition-colors active:scale-90"
+            title="이전 해로 이동"
+          >
+            <ChevronLeft className="w-5 h-5 text-gray-400 hover:text-green-600" />
+          </button>
+          <button 
+            onClick={resetToThisYear} 
+            className="px-3 py-1 text-sm font-semibold text-green-600 hover:bg-green-500/10 rounded-lg active:scale-95 transition-all"
+          >
+            올해
+          </button>
+          <button 
+            onClick={nextYear} 
+            className="p-2 hover:bg-green-500/10 rounded-full transition-colors active:scale-90"
+            title="다음 해로 이동"
+          >
+            <ChevronRight className="w-5 h-5 text-gray-400 hover:text-green-600" />
+          </button>
         </div>
       </div>
 
