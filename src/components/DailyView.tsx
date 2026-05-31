@@ -728,6 +728,36 @@ export default function DailyView({
     if (isRightSwipe) goToPrevImage();
   };
 
+  // 📱 메인 화면 날짜 변경 스와이프 감지 로직 (스마트폰 최적화)
+  const [mainTouchStart, setMainTouchStart] = useState<number | null>(null);
+  const [mainTouchEnd, setMainTouchEnd] = useState<number | null>(null);
+
+  const onMainTouchStart = (e: React.TouchEvent) => {
+    if (selectedImageInfo || editingId) return; // 이미지 모달이나 수정 모달 열림 시 제외
+    setMainTouchEnd(null);
+    setMainTouchStart(e.targetTouches[0].clientX);
+  };
+
+  const onMainTouchMove = (e: React.TouchEvent) => {
+    if (selectedImageInfo || editingId) return;
+    setMainTouchEnd(e.targetTouches[0].clientX);
+  };
+
+  const onMainTouchEnd = () => {
+    if (selectedImageInfo || editingId) return;
+    if (!mainTouchStart || !mainTouchEnd) return;
+    const distance = mainTouchStart - mainTouchEnd;
+    const swipeThreshold = 80; // 너무 민감하게 반응하지 않도록 80px 설정
+
+    if (distance > swipeThreshold) {
+      // 왼쪽으로 쓸기 -> 다음날로 이동
+      goToNext();
+    } else if (distance < -swipeThreshold) {
+      // 오른쪽으로 쓸기 -> 이전날로 이동
+      goToPrevious();
+    }
+  };
+
   // 🔒 모달 오픈 시 배경 스크롤 방지
   useEffect(() => {
     if (selectedImageInfo) {
@@ -741,7 +771,12 @@ export default function DailyView({
   }, [selectedImageInfo]);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start animate-in fade-in duration-500">
+    <div 
+      className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start animate-in fade-in duration-500"
+      onTouchStart={onMainTouchStart}
+      onTouchMove={onMainTouchMove}
+      onTouchEnd={onMainTouchEnd}
+    >
 
       {/* 🚀 Left Area: Task List & Timeline (8 columns) */}
       <div className="lg:col-span-8 flex flex-col space-y-6">
