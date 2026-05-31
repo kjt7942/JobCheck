@@ -1322,7 +1322,7 @@ export default function DailyView({
       {/* 📱 모바일 최적화 수정 보텀 시트 모달 */}
       {editingId && (
         <div 
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-300"
+          className="fixed inset-0 z-[150] flex items-end justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-300"
           onClick={cancelEdit}
         >
           <div 
