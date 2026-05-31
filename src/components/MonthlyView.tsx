@@ -98,6 +98,74 @@ export default function MonthlyView({
     if (distance < -minSwipeDistance) goToPrevImage();
   };
 
+  // 📱 메인 화면 달 변경 터치 스와이프 감지 로직 (스마트폰 최적화)
+  const [mainTouchStart, setMainTouchStart] = useState<number | null>(null);
+  const [mainTouchEnd, setMainTouchEnd] = useState<number | null>(null);
+
+  const onMainTouchStart = (e: React.TouchEvent) => {
+    if (selectedImageInfo) return; // 이미지 모달 열림 시 제외
+    setMainTouchEnd(null);
+    setMainTouchStart(e.targetTouches[0].clientX);
+  };
+
+  const onMainTouchMove = (e: React.TouchEvent) => {
+    if (selectedImageInfo) return;
+    setMainTouchEnd(e.targetTouches[0].clientX);
+  };
+
+  const onMainTouchEnd = () => {
+    if (selectedImageInfo) return;
+    if (!mainTouchStart || !mainTouchEnd) return;
+    const distance = mainTouchStart - mainTouchEnd;
+    const swipeThreshold = 80; // 너무 민감하게 반응하지 않도록 80px 설정
+
+    if (distance > swipeThreshold) {
+      // 왼쪽으로 쓸기 -> 다음달로 이동
+      nextMonth();
+    } else if (distance < -swipeThreshold) {
+      // 오른쪽으로 쓸기 -> 이전달로 이동
+      prevMonth();
+    }
+  };
+
+  // 💻 PC 마우스 드래그 달 변경 감지 로직 (PC 테스트 및 최적화)
+  const [mainMouseDown, setMainMouseDown] = useState<number | null>(null);
+  const [mainMouseEnd, setMainMouseEnd] = useState<number | null>(null);
+  const [isMouseDown, setIsMouseDown] = useState(false);
+
+  const onMainMouseDown = (e: React.MouseEvent) => {
+    if (selectedImageInfo) return;
+    const target = e.target as HTMLElement;
+    // 클릭이 필요한 인터랙티브 요소는 드래그 대상에서 안전하게 제외
+    if (target.closest('input') || target.closest('button') || target.closest('textarea') || target.closest('a')) return;
+    
+    setIsMouseDown(true);
+    setMainMouseEnd(null);
+    setMainMouseDown(e.clientX);
+  };
+
+  const onMainMouseMove = (e: React.MouseEvent) => {
+    if (!isMouseDown || selectedImageInfo) return;
+    setMainMouseEnd(e.clientX);
+  };
+
+  const onMainMouseUp = () => {
+    if (!isMouseDown) return;
+    setIsMouseDown(false);
+    
+    if (selectedImageInfo) return;
+    if (!mainMouseDown || !mainMouseEnd) return;
+    
+    const distance = mainMouseDown - mainMouseEnd;
+    const swipeThreshold = 100; // 마우스 드래그는 살짝 더 묵직하게 100px 설정
+
+    if (distance > swipeThreshold) {
+      nextMonth();
+    } else if (distance < -swipeThreshold) {
+      prevMonth();
+    }
+  };
+
   // 🔒 모달 오픈 시 배경 스크롤 방지
   useEffect(() => {
     if (selectedImageInfo) {
@@ -243,7 +311,16 @@ export default function MonthlyView({
   })();
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 pb-10">
+    <div 
+      className="space-y-6 animate-in fade-in duration-500 pb-10"
+      onTouchStart={onMainTouchStart}
+      onTouchMove={onMainTouchMove}
+      onTouchEnd={onMainTouchEnd}
+      onMouseDown={onMainMouseDown}
+      onMouseMove={onMainMouseMove}
+      onMouseUp={onMainMouseUp}
+      onMouseLeave={() => setIsMouseDown(false)}
+    >
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
