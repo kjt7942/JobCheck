@@ -162,18 +162,20 @@ export default function ToolsView() {
               )}
             </div>
 
-            {/* 결과 출력 카드 (슬림화 버전) */}
-            <div className="flex flex-col justify-center items-center bg-green-500/10 rounded-2xl border-2 border-dashed border-green-500/20 p-4 text-center space-y-3">
-              <div className="w-10 h-10 bg-green-500/20 rounded-full flex items-center justify-center text-green-600">
-                <CheckCircle className="w-5.5 h-5.5" />
+            {/* 결과 출력 카드 (슬림화 및 가로 배치 버전) */}
+            <div className="flex flex-col justify-center bg-green-500/10 rounded-2xl border-2 border-dashed border-green-500/20 p-4 space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 bg-green-500/20 rounded-full flex items-center justify-center text-green-600 shrink-0">
+                  <CheckCircle className="w-5 h-5" />
+                </div>
+                <div className="text-left">
+                  <span className="text-[10px] font-bold text-green-700 bg-green-500/20 px-2 py-0.5 rounded-md uppercase tracking-wider inline-block">필요한 농약/영양제 용량</span>
+                  <h4 className="text-2xl font-black text-green-600 mt-1">
+                    {dilutionResult.agentGrams} <span className="text-base font-bold">mL / g</span>
+                  </h4>
+                </div>
               </div>
-              <div>
-                <span className="text-[10px] font-bold text-green-700 bg-green-500/20 px-2 py-0.5 rounded-md uppercase tracking-wider">필요한 농약/영양제 용량</span>
-                <h4 className="text-2xl font-black text-green-600 mt-1">
-                  {dilutionResult.agentGrams} <span className="text-base font-bold">mL / g</span>
-                </h4>
-              </div>
-              <div className="pt-3 border-t border-green-500/10 w-full">
+              <div className="pt-2.5 border-t border-green-500/10 w-full text-center">
                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">현장 간편 계량 꿀팁</p>
                 <p className="text-xs font-extrabold text-green-700 mt-1">
                   🧴 표준 뚜껑/컵(20mL) 기준 <strong className="text-sm text-green-600">{dilutionResult.caps} 컵</strong> 분량
