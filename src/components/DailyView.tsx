@@ -1308,25 +1308,6 @@ export default function DailyView({
             <p className="text-sm font-bold text-gray-400">일정 등록 권한이 없습니다.</p>
           </div>
         )}
-
-        {/* Summary Widget */}
-        <div className="bg-[var(--card-bg)] rounded-[24px] shadow-sm border border-[var(--card-border)] p-6 flex flex-col items-center text-center">
-          <div className="w-16 h-16 rounded-2xl bg-green-500/10 flex items-center justify-center mb-4 text-green-500">
-            <Activity className="w-8 h-8" />
-          </div>
-          <h4 className="text-lg font-bold text-[var(--foreground)] mb-1">훌륭합니다!</h4>
-          <p className="text-sm font-medium text-gray-500 mb-6">
-            오늘 총 <strong className="text-[var(--foreground)]">{totalCount}</strong>개의 일정 중<br />
-            <strong className="text-[var(--foreground)]">{completedCount}</strong>개를 완료하셨습니다.
-          </p>
-
-          <div className="w-full h-2 bg-[var(--input-bg)] rounded-full overflow-hidden">
-            <div
-              className="h-full bg-green-500 rounded-full transition-all duration-1000"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-        </div>
       </div>
 
       {/* 🖼️ Image Modal */}
