@@ -227,7 +227,7 @@ export default function Home() {
     { id: "daily", label: "일일 할일", icon: ListTodo },
     { id: "monthly", label: "월간 달력", icon: CalendarRange },
     { id: "yearly", label: "연간 일정", icon: Calendar },
-    { id: "tools", label: "영농 도구", icon: Wrench },
+    { id: "tools", label: "도구", icon: Wrench },
   ];
 
   if (authLoading) {
