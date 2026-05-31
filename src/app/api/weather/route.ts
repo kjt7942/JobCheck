@@ -31,13 +31,13 @@ export async function GET(request: Request) {
     let tempMax = 32; // 최고 기온 기본 디폴트
     let tempMin = 13; // 최저 기온 기본 디폴트
 
-    // A. 최고기온 다단계 포격 매칭
+    // A. 최고기온 다단계 포격 매칭 (표준 [\s\S]*? 문자클래스로 전격 전환)
     const highestMatch = html.match(/최고기온\s*(-?\d+)°/);
     const highestMatch2 = html.match(/최고\s*기온\s*(-?\d+)°/);
     const desktopHigh = html.match(/class="[^"]*high[^"]*"[^>]*>(-?\d+)°/);
     const desktopHigh2 = html.match(/(-?\d+)°<span class="blind">최고기온<\/span>/);
-    const weeklyHigh = html.match(/<span class="highest">[^]*?(-?\d+)°/);
-    const temperatureHigh = html.match(/temperature_text[^]*?highest[^]*?(-?\d+)°/);
+    const weeklyHigh = html.match(/<span class="highest">[\s\S]*?(-?\d+)°/);
+    const temperatureHigh = html.match(/temperature_text[\s\S]*?highest[\s\S]*?(-?\d+)°/);
 
     if (highestMatch && highestMatch[1]) {
       tempMax = parseInt(highestMatch[1], 10);
@@ -53,13 +53,13 @@ export async function GET(request: Request) {
       tempMax = parseInt(temperatureHigh[1], 10);
     }
 
-    // B. 최저기온 다단계 포격 매칭
+    // B. 최저기온 다단계 포격 매칭 (표준 [\s\S]*? 문자클래스로 전격 전환)
     const lowestMatch = html.match(/최저기온\s*(-?\d+)°/);
     const lowestMatch2 = html.match(/최저\s*기온\s*(-?\d+)°/);
     const desktopLow = html.match(/class="[^"]*low[^"]*"[^>]*>(-?\d+)°/);
     const desktopLow2 = html.match(/(-?\d+)°<span class="blind">최저기온<\/span>/);
-    const weeklyLow = html.match(/<span class="lowest">[^]*?(-?\d+)°/);
-    const temperatureLow = html.match(/temperature_text[^]*?lowest[^]*?(-?\d+)°/);
+    const weeklyLow = html.match(/<span class="lowest">[\s\S]*?(-?\d+)°/);
+    const temperatureLow = html.match(/temperature_text[\s\S]*?lowest[\s\S]*?(-?\d+)°/);
 
     if (lowestMatch && lowestMatch[1]) {
       tempMin = parseInt(lowestMatch[1], 10);
@@ -76,13 +76,19 @@ export async function GET(request: Request) {
     }
 
     // 2. 날씨 상태 파싱
-    // 예: <span class="weather before_slash">비</span>
     let weatherState = "맑음"; // 기본값
     
-    // 모바일 네이버 기상 텍스트 매칭
+    // 모바일 네이버 기상 텍스트 매칭 (before_slash 유무에 관계없이 칼같이 수집하도록 보강)
     const weatherMatch = html.match(/<span class="weather before_slash">([^<]+)<\/span>/);
+    const weatherMatch2 = html.match(/<span class="weather">([^<]+)<\/span>/);
+    const weatherMatch3 = html.match(/class="weather"[^>]*>([^<]+)<\/span>/);
+
     if (weatherMatch && weatherMatch[1]) {
       weatherState = weatherMatch[1].trim();
+    } else if (weatherMatch2 && weatherMatch2[1]) {
+      weatherState = weatherMatch2[1].trim();
+    } else if (weatherMatch3 && weatherMatch3[1]) {
+      weatherState = weatherMatch3[1].trim();
     } else {
       // 서브 매칭: 날씨 요약 문구에서 추출
       // 예: <p class="summary">어제보다 2° 낮아요 · 흐림</p>
