@@ -168,7 +168,7 @@ export default function ToolsView() {
                 <div className="w-9 h-9 bg-green-500/20 rounded-full flex items-center justify-center text-green-600 shrink-0">
                   <CheckCircle className="w-5 h-5" />
                 </div>
-                <div className="text-left">
+                <div className="text-center flex flex-col items-center">
                   <span className="text-[10px] font-bold text-green-700 bg-green-500/20 px-2 py-0.5 rounded-md uppercase tracking-wider inline-block">필요한 농약/영양제 용량</span>
                   <h4 className="text-2xl font-black text-green-600 mt-1">
                     {dilutionResult.agentGrams} <span className="text-base font-bold">mL / g</span>
