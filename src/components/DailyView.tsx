@@ -1326,11 +1326,11 @@ export default function DailyView({
           onClick={cancelEdit}
         >
           <div 
-            className="w-full max-w-md bg-[var(--card-bg)] rounded-t-[32px] p-6 shadow-2xl border-t border-[var(--card-border)] flex flex-col space-y-5 animate-in slide-in-from-bottom duration-300 max-h-[90vh] overflow-y-auto"
+            className="w-full max-w-md bg-[var(--card-bg)] rounded-t-[32px] p-6 shadow-2xl border-t border-[var(--card-border)] flex flex-col animate-in slide-in-from-bottom duration-300 max-h-[85vh] md:max-h-[90vh]"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-[var(--card-border)]">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--card-border)] mb-4">
               <h3 className="text-lg font-extrabold text-[var(--foreground)]">일정 수정</h3>
               <button 
                 onClick={cancelEdit}
@@ -1340,8 +1340,8 @@ export default function DailyView({
               </button>
             </div>
 
-            {/* Form */}
-            <div className="space-y-4">
+            {/* Form - 내용물만 스크롤 가능하도록 flex-1 및 overflow-y-auto 부여 */}
+            <div className="space-y-4 overflow-y-auto pr-1 flex-1 pb-4 scrollbar-thin">
               {/* Task Title */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-gray-400 uppercase">일정 내용</label>
@@ -1493,8 +1493,8 @@ export default function DailyView({
               </div>
             </div>
 
-            {/* Actions */}
-            <div className="flex gap-3 pt-2">
+            {/* Actions - 하단에 항상 딱 붙어있도록 보장 */}
+            <div className="flex gap-3 pt-3 border-t border-[var(--card-border)] bg-[var(--card-bg)]">
               <button
                 onClick={cancelEdit}
                 className="flex-1 bg-[var(--input-bg)] hover:bg-gray-200/50 text-gray-500 text-sm font-bold py-3.5 rounded-xl transition-all active:scale-95"
