@@ -5,14 +5,36 @@ export const dynamic = "force-dynamic";
 // 🌍 네이버 실시간 날씨 검색 파싱 서버 라우트 핸들러 (CORS 완벽 회피 및 100% 실시간 동기화)
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const address = searchParams.get("address") || "문경시 산양면";
+  const rawAddress = searchParams.get("address") || "문경시 산양면";
+
+  // 읍/면/동/리/가 단위까지만 주소를 잘라서 네이버 날씨 검색 카드가 무조건 나오도록 가공
+  const cleanAddressForWeather = (addr: string): string => {
+    if (!addr) return "문경시 산양면";
+    const tokens = addr.split(/\s+/);
+    const cleanTokens: string[] = [];
+    for (const token of tokens) {
+      cleanTokens.push(token);
+      if (
+        token.endsWith("읍") ||
+        token.endsWith("면") ||
+        token.endsWith("동") ||
+        token.endsWith("리") ||
+        token.endsWith("가")
+      ) {
+        break;
+      }
+    }
+    return cleanTokens.join(" ");
+  };
+
+  const address = cleanAddressForWeather(rawAddress);
 
   // 네이버 검색 날씨 쿼리 조합
   const query = encodeURIComponent(`${address} 날씨`);
   const naverUrl = `https://search.naver.com/search.naver?query=${query}`;
 
   try {
-    console.log(`[네이버 날씨 크롤링 실행] 주소: ${address}`);
+    console.log(`[네이버 날씨 크롤링 실행] 주소: ${address} (원본: ${rawAddress})`);
 
     const response = await fetch(naverUrl, {
       cache: "no-store", // 30분 캐싱을 완전히 풀고 항상 실시간 네이버 다이렉트 fetch 적용
@@ -29,81 +51,112 @@ export async function GET(request: Request) {
 
     const html = await response.text();
 
-    // 1. 최고/최저기온 파싱 (네이버 실시간 검색 날씨 카드 다단계 정밀 파싱)
+    // 1. 최고/최저기온 및 날씨상태 파싱
     let tempMax: number | null = null;
     let tempMin: number | null = null;
-
-    // A. 최고기온 다단계 포격 매칭
-    const highestMatch = html.match(/최고기온\s*(-?\d+)°/);
-    const highestMatch2 = html.match(/최고\s*기온\s*(-?\d+)°/);
-    const desktopHigh = html.match(/class="[^"]*high[^"]*"[^>]*>(-?\d+)°/);
-    const desktopHigh2 = html.match(/(-?\d+)°<span class="blind">최고기온<\/span>/);
-    const weeklyHigh = html.match(/<span class="highest">[\s\S]*?(-?\d+)°/);
-    const temperatureHigh = html.match(/temperature_text[\s\S]*?highest[\s\S]*?(-?\d+)°/);
-
-    if (highestMatch && highestMatch[1]) {
-      tempMax = parseInt(highestMatch[1], 10);
-    } else if (highestMatch2 && highestMatch2[1]) {
-      tempMax = parseInt(highestMatch2[1], 10);
-    } else if (desktopHigh2 && desktopHigh2[1]) {
-      tempMax = parseInt(desktopHigh2[1], 10);
-    } else if (desktopHigh && desktopHigh[1]) {
-      tempMax = parseInt(desktopHigh[1], 10);
-    } else if (weeklyHigh && weeklyHigh[1]) {
-      tempMax = parseInt(weeklyHigh[1], 10);
-    } else if (temperatureHigh && temperatureHigh[1]) {
-      tempMax = parseInt(temperatureHigh[1], 10);
-    }
-
-    // B. 최저기온 다단계 포격 매칭
-    const lowestMatch = html.match(/최저기온\s*(-?\d+)°/);
-    const lowestMatch2 = html.match(/최저\s*기온\s*(-?\d+)°/);
-    const desktopLow = html.match(/class="[^"]*low[^"]*"[^>]*>(-?\d+)°/);
-    const desktopLow2 = html.match(/(-?\d+)°<span class="blind">최저기온<\/span>/);
-    const weeklyLow = html.match(/<span class="lowest">[\s\S]*?(-?\d+)°/);
-    const temperatureLow = html.match(/temperature_text[\s\S]*?lowest[\s\S]*?(-?\d+)°/);
-
-    if (lowestMatch && lowestMatch[1]) {
-      tempMin = parseInt(lowestMatch[1], 10);
-    } else if (lowestMatch2 && lowestMatch2[1]) {
-      tempMin = parseInt(lowestMatch2[1], 10);
-    } else if (desktopLow2 && desktopLow2[1]) {
-      tempMin = parseInt(desktopLow2[1], 10);
-    } else if (desktopLow && desktopLow[1]) {
-      tempMin = parseInt(desktopLow[1], 10);
-    } else if (weeklyLow && weeklyLow[1]) {
-      tempMin = parseInt(weeklyLow[1], 10);
-    } else if (temperatureLow && temperatureLow[1]) {
-      tempMin = parseInt(temperatureLow[1], 10);
-    }
-
-    // 2. 날씨 상태 파싱
     let weatherState: string | null = null;
-    
-    // 모바일 네이버 기상 텍스트 매칭 (before_slash 유무에 관계없이 칼같이 수집하도록 보강)
-    const weatherMatch = html.match(/<span class="weather before_slash">([^<]+)<\/span>/);
-    const weatherMatch2 = html.match(/<span class="weather">([^<]+)<\/span>/);
-    const weatherMatch3 = html.match(/class="weather"[^>]*>([^<]+)<\/span>/);
 
-    if (weatherMatch && weatherMatch[1]) {
-      weatherState = weatherMatch[1].trim();
-    } else if (weatherMatch2 && weatherMatch2[1]) {
-      weatherState = weatherMatch2[1].trim();
-    } else if (weatherMatch3 && weatherMatch3[1]) {
-      weatherState = weatherMatch3[1].trim();
-    } else {
-      // 서브 매칭: 날씨 요약 문구에서 추출
-      const summaryMatch = html.match(/class="summary"[^>]*>([^<]+)<\/p>/);
-      if (summaryMatch && summaryMatch[1]) {
-        const summaryText = summaryMatch[1];
-        if (summaryText.includes("비") || summaryText.includes("소나기")) {
-          weatherState = "비";
-        } else if (summaryText.includes("눈")) {
-          weatherState = "눈";
-        } else if (summaryText.includes("흐림")) {
-          weatherState = "흐림";
-        } else if (summaryText.includes("구름") || summaryText.includes("맑음")) {
-          weatherState = summaryText.includes("맑음") ? "맑음" : "흐림";
+    // 🌟 [최우선 순위] 주간 예보 (weekly_forecast_area) 내의 "오늘" 영역 파싱
+    const weeklyForecastIndex = html.indexOf('weekly_forecast_area');
+    let weeklyTodayParsed = false;
+
+    if (weeklyForecastIndex !== -1) {
+      const weeklyHtml = html.substring(weeklyForecastIndex, weeklyForecastIndex + 10000);
+      const todayMatch = weeklyHtml.match(/<li class="week_item\s+today">([\s\S]*?)<\/li>/);
+      
+      if (todayMatch) {
+        const todayHtml = todayMatch[1];
+        const lowMatch = todayHtml.match(/class="lowest"[\s\S]*?(-?\d+)°/);
+        const highMatch = todayHtml.match(/class="highest"[\s\S]*?(-?\d+)°/);
+        
+        // 오늘 오전 날씨 파싱
+        let morningWeather: string | null = null;
+        const cellWeatherMatch = todayHtml.match(/<div class="cell_weather">([\s\S]*?)<\/div>/);
+        if (cellWeatherMatch) {
+          const cellWeatherHtml = cellWeatherMatch[1];
+          const blindMatch = cellWeatherHtml.match(/<span class="blind">([^<]+)<\/span>/);
+          if (blindMatch) {
+            morningWeather = blindMatch[1].trim();
+          }
+        }
+
+        if (lowMatch && highMatch && morningWeather) {
+          tempMin = parseInt(lowMatch[1], 10);
+          tempMax = parseInt(highMatch[1], 10);
+          weatherState = morningWeather;
+          weeklyTodayParsed = true;
+        }
+      }
+    }
+
+    // 만약 주간 예보 파싱에 실패한 경우 기존 레거시 다단계 정규식들로 자동 백업 시도
+    if (!weeklyTodayParsed) {
+      const highestMatch = html.match(/최고기온\s*(-?\d+)°/);
+      const highestMatch2 = html.match(/최고\s*기온\s*(-?\d+)°/);
+      const desktopHigh = html.match(/class="[^"]*high[^"]*"[^>]*>(-?\d+)°/);
+      const desktopHigh2 = html.match(/(-?\d+)°<span class="blind">최고기온<\/span>/);
+      const weeklyHigh = html.match(/<span class="highest">[\s\S]*?(-?\d+)°/);
+      const temperatureHigh = html.match(/temperature_text[\s\S]*?highest[\s\S]*?(-?\d+)°/);
+
+      if (highestMatch && highestMatch[1]) {
+        tempMax = parseInt(highestMatch[1], 10);
+      } else if (highestMatch2 && highestMatch2[1]) {
+        tempMax = parseInt(highestMatch2[1], 10);
+      } else if (desktopHigh2 && desktopHigh2[1]) {
+        tempMax = parseInt(desktopHigh2[1], 10);
+      } else if (desktopHigh && desktopHigh[1]) {
+        tempMax = parseInt(desktopHigh[1], 10);
+      } else if (weeklyHigh && weeklyHigh[1]) {
+        tempMax = parseInt(weeklyHigh[1], 10);
+      } else if (temperatureHigh && temperatureHigh[1]) {
+        tempMax = parseInt(temperatureHigh[1], 10);
+      }
+
+      const lowestMatch = html.match(/최저기온\s*(-?\d+)°/);
+      const lowestMatch2 = html.match(/최저\s*기온\s*(-?\d+)°/);
+      const desktopLow = html.match(/class="[^"]*low[^"]*"[^>]*>(-?\d+)°/);
+      const desktopLow2 = html.match(/(-?\d+)°<span class="blind">최저기온<\/span>/);
+      const weeklyLow = html.match(/<span class="lowest">[\s\S]*?(-?\d+)°/);
+      const temperatureLow = html.match(/temperature_text[\s\S]*?lowest[\s\S]*?(-?\d+)°/);
+
+      if (lowestMatch && lowestMatch[1]) {
+        tempMin = parseInt(lowestMatch[1], 10);
+      } else if (lowestMatch2 && lowestMatch2[1]) {
+        tempMin = parseInt(lowestMatch2[1], 10);
+      } else if (desktopLow2 && desktopLow2[1]) {
+        tempMin = parseInt(desktopLow2[1], 10);
+      } else if (desktopLow && desktopLow[1]) {
+        tempMin = parseInt(desktopLow[1], 10);
+      } else if (weeklyLow && weeklyLow[1]) {
+        tempMin = parseInt(weeklyLow[1], 10);
+      } else if (temperatureLow && temperatureLow[1]) {
+        tempMin = parseInt(temperatureLow[1], 10);
+      }
+
+      // 날씨 상태 레거시 파싱
+      const weatherMatch = html.match(/<span class="weather before_slash">([^<]+)<\/span>/);
+      const weatherMatch2 = html.match(/<span class="weather">([^<]+)<\/span>/);
+      const weatherMatch3 = html.match(/class="weather"[^>]*>([^<]+)<\/span>/);
+
+      if (weatherMatch && weatherMatch[1]) {
+        weatherState = weatherMatch[1].trim();
+      } else if (weatherMatch2 && weatherMatch2[1]) {
+        weatherState = weatherMatch2[1].trim();
+      } else if (weatherMatch3 && weatherMatch3[1]) {
+        weatherState = weatherMatch3[1].trim();
+      } else {
+        const summaryMatch = html.match(/class="summary"[^>]*>([^<]+)<\/p>/);
+        if (summaryMatch && summaryMatch[1]) {
+          const summaryText = summaryMatch[1];
+          if (summaryText.includes("비") || summaryText.includes("소나기")) {
+            weatherState = "비";
+          } else if (summaryText.includes("눈")) {
+            weatherState = "눈";
+          } else if (summaryText.includes("흐림")) {
+            weatherState = "흐림";
+          } else if (summaryText.includes("구름") || summaryText.includes("맑음")) {
+            weatherState = summaryText.includes("맑음") ? "맑음" : "흐림";
+          }
         }
       }
     }

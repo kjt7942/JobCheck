@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🌦️ 네이버 날씨 Client-Side Fetch 검증 센터</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-color: #0b0f19;
+      --card-bg: rgba(22, 28, 45, 0.6);
+      --border-color: rgba(255, 255, 255, 0.08);
+      --text-main: #f3f4f6;
+      --text-sub: #9ca3af;
+      --primary: #10b981;
+      --primary-hover: #059669;
+      --accent: #3b82f6;
+      --error: #ef4444;
+      --success: #10b981;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      font-family: 'Outfit', 'Noto Sans KR', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(16, 185, 129, 0.05) 0px, transparent 50%),
+        radial-gradient(at 50% 0%, rgba(59, 130, 246, 0.05) 0px, transparent 50%);
+    }
+
+    .container {
+      max-width: 800px;
+      width: 100%;
+      background: var(--card-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border-color);
+      border-radius: 24px;
+      padding: 2.5rem;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #10b981, #3b82f6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 0.5rem;
+    }
+
+    .subtitle {
+      color: var(--text-sub);
+      font-size: 0.95rem;
+    }
+
+    .input-group {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 2rem;
+    }
+
+    input {
+      flex: 1;
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 0.85rem 1.2rem;
+      color: var(--text-main);
+      font-size: 1rem;
+      outline: none;
+      transition: all 0.2s;
+    }
+
+    input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+    }
+
+    .proxy-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .proxy-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      transition: all 0.3s ease;
+    }
+
+    .proxy-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .proxy-name {
+      font-weight: 600;
+      font-size: 1.1rem;
+      color: var(--text-main);
+    }
+
+    .proxy-url {
+      font-size: 0.8rem;
+      color: var(--text-sub);
+      word-break: break-all;
+    }
+
+    button {
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      padding: 0.75rem 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    button:hover {
+      background: var(--primary-hover);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .result-box {
+      margin-top: 1rem;
+      border-radius: 12px;
+      padding: 1rem;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid var(--border-color);
+      font-family: monospace;
+      font-size: 0.9rem;
+      min-height: 100px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.5rem;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .badge-pending { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+    .badge-success { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+    .badge-error { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+
+    .weather-info {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+      font-weight: bold;
+    }
+
+    .weather-item {
+      background: rgba(255, 255, 255, 0.05);
+      padding: 0.5rem;
+      border-radius: 8px;
+      text-align: center;
+    }
+
+    .log-area {
+      margin-top: 2rem;
+      width: 100%;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 1.5rem;
+    }
+
+    .log-title {
+      font-weight: 600;
+      margin-bottom: 0.75rem;
+      color: var(--text-main);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .log-content {
+      font-family: monospace;
+      font-size: 0.85rem;
+      max-height: 200px;
+      overflow-y: auto;
+      color: #34d399;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🌦️ Client-Side Weather Fetch Test</h1>
+      <div class="subtitle">브라우저(스마트폰/PC)에서 직접 여러 CORS 프록시를 통해 네이버 날씨 정보를 긁어오는 실시간 테스트 센터</div>
+    </header>
+
+    <div class="input-group">
+      <input type="text" id="addressInput" value="문경시 산양면" placeholder="날씨를 조회할 주소 입력 (예: 문경시 산양면)">
+    </div>
+
+    <div class="proxy-grid">
+      <!-- 1. AllOrigins Proxy -->
+      <div class="proxy-card">
+        <div class="proxy-name">1. AllOrigins Proxy</div>
+        <div class="proxy-url">https://api.allorigins.win/get?url=...</div>
+        <button id="btn-allorigins" onclick="testProxy('allorigins')">테스트 시작</button>
+        <div id="result-allorigins" class="result-box">대기 중...</div>
+      </div>
+
+      <!-- 2. Corsproxy.io -->
+      <div class="proxy-card">
+        <div class="proxy-name">2. CorsProxy.io</div>
+        <div class="proxy-url">https://corsproxy.io/?...</div>
+        <button id="btn-corsproxy" onclick="testProxy('corsproxy')">테스트 시작</button>
+        <div id="result-corsproxy" class="result-box">대기 중...</div>
+      </div>
+
+      <!-- 3. Direct Fetch (CORS 에러 발생 예상) -->
+      <div class="proxy-card">
+        <div class="proxy-name">3. Direct Fetch (우회 없음)</div>
+        <div class="proxy-url">https://search.naver.com/...</div>
+        <button id="btn-direct" onclick="testProxy('direct')">테스트 시작</button>
+        <div id="result-direct" class="result-box">대기 중...</div>
+      </div>
+    </div>
+
+    <div class="log-area" style="margin-top: 1.5rem;">
+      <div class="log-title">
+        <span>🔍 실제 HTML 매칭 근거 데이터 (Naver 원본 추출)</span>
+      </div>
+      <div id="matchedContext" class="log-content" style="color: #60a5fa; max-height: 250px;">날씨 정보를 긁어오면 여기에 실제 네이버 페이지 내의 매칭된 부분의 앞뒤 HTML 코드가 표시됩니다.</div>
+    </div>
+
+    <div class="log-area">
+      <div class="log-title">
+        <span>📋 실시간 파싱 로그</span>
+        <button onclick="clearLogs()" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">로그 비우기</button>
+      </div>
+      <div id="logContent" class="log-content">테스트를 진행하면 상세 정규식 매칭 로그가 여기에 표시됩니다.</div>
+    </div>
+  </div>
+
+  <script>
+    const logs = [];
+    function addLog(msg) {
+      const now = new Date().toLocaleTimeString();
+      logs.push(`[${now}] ${msg}`);
+      document.getElementById('logContent').innerText = logs.join('\n');
+      const logBox = document.getElementById('logContent');
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    function clearLogs() {
+      logs.length = 0;
+      document.getElementById('logContent').innerText = '로그 비워짐.';
+      document.getElementById('matchedContext').innerText = '데이터가 없습니다.';
+    }
+
+    // HTML에서 매칭된 단어 주변의 100자 정도의 텍스트를 추출해서 보여주는 헬퍼
+    function getContextSnippet(html, matchResult, title) {
+      if (!matchResult) return `${title}: 매칭 실패\n`;
+      const index = matchResult.index;
+      const matchedStr = matchResult[0];
+      const start = Math.max(0, index - 60);
+      const end = Math.min(html.length, index + matchedStr.length + 60);
+      const snippet = html.substring(start, end).replace(/\n/g, ' ');
+      return `[${title} 매칭 결과: "${matchedStr}"]\n... ${snippet} ...\n\n`;
+    }
+
+    // 네이버 날씨 파싱 엔진
+    function parseNaverWeather(html) {
+      addLog("HTML 데이터 파싱 시작...");
+      
+      let tempMax = null;
+      let tempMin = null;
+      let weatherState = null;
+      let contextInfo = "";
+
+      // 🌟 [최우선 순위] 주간 예보 (weekly_forecast_area) 내의 "오늘" 영역 파싱
+      const weeklyForecastIndex = html.indexOf('weekly_forecast_area');
+      let weeklyTodayParsed = false;
+      let weatherMatchUsed = null;
+
+      if (weeklyForecastIndex !== -1) {
+        addLog("주간 예보 영역(weekly_forecast_area) 감지 성공.");
+        const weeklyHtml = html.substring(weeklyForecastIndex, weeklyForecastIndex + 10000);
+        const todayMatch = weeklyHtml.match(/<li class="week_item\s+today">([\s\S]*?)<\/li>/);
+        
+        if (todayMatch) {
+          addLog("주간 예보 내 '오늘(today)' 블록 감지 성공.");
+          const todayHtml = todayMatch[1];
+          const lowMatch = todayHtml.match(/class="lowest"[\s\S]*?(-?\d+)°/);
+          const highMatch = todayHtml.match(/class="highest"[\s\S]*?(-?\d+)°/);
+          
+          // 오늘 오전 날씨 파싱
+          let morningWeather = null;
+          const cellWeatherMatch = todayHtml.match(/<div class="cell_weather">([\s\S]*?)<\/div>/);
+          if (cellWeatherMatch) {
+            const cellWeatherHtml = cellWeatherMatch[1];
+            const blindMatch = cellWeatherHtml.match(/<span class="blind">([^<]+)<\/span>/);
+            if (blindMatch) {
+              morningWeather = blindMatch[1].trim();
+              weatherMatchUsed = blindMatch;
+            }
+          }
+
+          if (lowMatch && highMatch && morningWeather) {
+            tempMin = parseInt(lowMatch[1], 10);
+            tempMax = parseInt(highMatch[1], 10);
+            weatherState = morningWeather;
+            weeklyTodayParsed = true;
+            contextInfo += `[주간예보 '오늘' 블록 성공]\n최저: ${tempMin}°, 최고: ${tempMax}°, 오전 날씨: ${weatherState}\n\n`;
+            addLog(`✅ 주간 예보 '오늘' 블록에서 파싱 완료: 최저 ${tempMin}°, 최고 ${tempMax}°, 오전 날씨: ${weatherState}`);
+          }
+        }
+      }
+
+      // 만약 주간 예보 영역 파싱에 실패한 경우에만 기존 레거시 정규식들로 다단계 시도 (백업)
+      if (!weeklyTodayParsed) {
+        addLog("⚠️ 주간 예보 파싱 실패. 기존 레거시 다단계 매칭으로 전환합니다.");
+        
+        // A. 최고기온 다단계 포격 매칭
+        const highestMatch = html.match(/최고기온\s*(-?\d+)°/);
+        const highestMatch2 = html.match(/최고\s*기온\s*(-?\d+)°/);
+        const desktopHigh = html.match(/class="[^"]*high[^"]*"[^>]*>(-?\d+)°/);
+        const desktopHigh2 = html.match(/(-?\d+)°<span class="blind">최고기온<\/span>/);
+        const weeklyHigh = html.match(/<span class="highest">[\s\S]*?(-?\d+)°/);
+        const temperatureHigh = html.match(/temperature_text[\s\S]*?highest[\s\S]*?(-?\d+)°/);
+
+        let highestMatchUsed = null;
+        if (highestMatch && highestMatch[1]) {
+          tempMax = parseInt(highestMatch[1], 10);
+          highestMatchUsed = highestMatch;
+          addLog(`최고기온 매칭 성공 (highestMatch): ${tempMax}°`);
+        } else if (highestMatch2 && highestMatch2[1]) {
+          tempMax = parseInt(highestMatch2[1], 10);
+          highestMatchUsed = highestMatch2;
+          addLog(`최고기온 매칭 성공 (highestMatch2): ${tempMax}°`);
+        } else if (desktopHigh2 && desktopHigh2[1]) {
+          tempMax = parseInt(desktopHigh2[1], 10);
+          highestMatchUsed = desktopHigh2;
+          addLog(`최고기온 매칭 성공 (desktopHigh2): ${tempMax}°`);
+        } else if (desktopHigh && desktopHigh[1]) {
+          tempMax = parseInt(desktopHigh[1], 10);
+          highestMatchUsed = desktopHigh;
+          addLog(`최고기온 매칭 성공 (desktopHigh): ${tempMax}°`);
+        } else if (weeklyHigh && weeklyHigh[1]) {
+          tempMax = parseInt(weeklyHigh[1], 10);
+          highestMatchUsed = weeklyHigh;
+          addLog(`최고기온 매칭 성공 (weeklyHigh): ${tempMax}°`);
+        } else if (temperatureHigh && temperatureHigh[1]) {
+          tempMax = parseInt(temperatureHigh[1], 10);
+          highestMatchUsed = temperatureHigh;
+          addLog(`최고기온 매칭 성공 (temperatureHigh): ${tempMax}°`);
+        }
+        
+        contextInfo += getContextSnippet(html, highestMatchUsed, "최고기온 (레거시)");
+
+        // B. 최저기온 다단계 포격 매칭
+        const lowestMatch = html.match(/최저기온\s*(-?\d+)°/);
+        const lowestMatch2 = html.match(/최저\s*기온\s*(-?\d+)°/);
+        const desktopLow = html.match(/class="[^"]*low[^"]*"[^>]*>(-?\d+)°/);
+        const desktopLow2 = html.match(/(-?\d+)°<span class="blind">최저기온<\/span>/);
+        const weeklyLow = html.match(/<span class="lowest">[\s\S]*?(-?\d+)°/);
+        const temperatureLow = html.match(/temperature_text[\s\S]*?lowest[\s\S]*?(-?\d+)°/);
+
+        let lowestMatchUsed = null;
+        if (lowestMatch && lowestMatch[1]) {
+          tempMin = parseInt(lowestMatch[1], 10);
+          lowestMatchUsed = lowestMatch;
+          addLog(`최저기온 매칭 성공 (lowestMatch): ${tempMin}°`);
+        } else if (lowestMatch2 && lowestMatch2[1]) {
+          tempMin = parseInt(lowestMatch2[1], 10);
+          lowestMatchUsed = lowestMatch2;
+          addLog(`최저기온 매칭 성공 (lowestMatch2): ${tempMin}°`);
+        } else if (desktopLow2 && desktopLow2[1]) {
+          tempMin = parseInt(desktopLow2[1], 10);
+          lowestMatchUsed = desktopLow2;
+          addLog(`최저기온 매칭 성공 (desktopLow2): ${tempMin}°`);
+        } else if (desktopLow && desktopLow[1]) {
+          tempMin = parseInt(desktopLow[1], 10);
+          lowestMatchUsed = desktopLow;
+          addLog(`최저기온 매칭 성공 (desktopLow): ${tempMin}°`);
+        } else if (weeklyLow && weeklyLow[1]) {
+          tempMin = parseInt(weeklyLow[1], 10);
+          lowestMatchUsed = weeklyLow;
+          addLog(`최저기온 매칭 성공 (weeklyLow): ${tempMin}°`);
+        } else if (temperatureLow && temperatureLow[1]) {
+          tempMin = parseInt(temperatureLow[1], 10);
+          lowestMatchUsed = temperatureLow;
+          addLog(`최저기온 매칭 성공 (temperatureLow): ${tempMin}°`);
+        }
+        
+        contextInfo += getContextSnippet(html, lowestMatchUsed, "최저기온 (레거시)");
+
+        // C. 날씨 상태 레거시 파싱
+        const weatherMatch = html.match(/<span class="weather before_slash">([^<]+)<\/span>/);
+        const weatherMatch2 = html.match(/<span class="weather">([^<]+)<\/span>/);
+        const weatherMatch3 = html.match(/class="weather"[^>]*>([^<]+)<\/span>/);
+
+        if (weatherMatch && weatherMatch[1]) {
+          weatherState = weatherMatch[1].trim();
+          weatherMatchUsed = weatherMatch;
+          addLog(`날씨 상태 매칭 성공 (weatherMatch): ${weatherState}`);
+        } else if (weatherMatch2 && weatherMatch2[1]) {
+          weatherState = weatherMatch2[1].trim();
+          weatherMatchUsed = weatherMatch2;
+          addLog(`날씨 상태 매칭 성공 (weatherMatch2): ${weatherState}`);
+        } else if (weatherMatch3 && weatherMatch3[1]) {
+          weatherState = weatherMatch3[1].trim();
+          weatherMatchUsed = weatherMatch3;
+          addLog(`날씨 상태 매칭 성공 (weatherMatch3): ${weatherState}`);
+        } else {
+          const summaryMatch = html.match(/class="summary"[^>]*>([^<]+)<\/p>/);
+          if (summaryMatch && summaryMatch[1]) {
+            const summaryText = summaryMatch[1];
+            if (summaryText.includes("비") || summaryText.includes("소나기")) {
+              weatherState = "비";
+            } else if (summaryText.includes("눈")) {
+              weatherState = "눈";
+            } else if (summaryText.includes("흐림")) {
+              weatherState = "흐림";
+            } else if (summaryText.includes("구름") || summaryText.includes("맑음")) {
+              weatherState = summaryText.includes("맑음") ? "맑음" : "흐림";
+            }
+            weatherMatchUsed = summaryMatch;
+            addLog(`날씨 상태 요약 대체 매칭: ${weatherState} (요약문구: ${summaryText})`);
+          }
+        }
+      }
+      
+      contextInfo += getContextSnippet(html, weatherMatchUsed, "날씨 상태");
+      document.getElementById('matchedContext').innerText = contextInfo;
+
+      let finalWeather = "맑음";
+      if (weatherState) {
+        if (weatherState.includes("비") || weatherState.includes("소나기") || weatherState.includes("강수")) {
+          finalWeather = "비";
+        } else if (weatherState.includes("눈") || weatherState.includes("진눈깨비")) {
+          finalWeather = "눈";
+        } else if (weatherState.includes("흐림") || weatherState.includes("구름많음") || weatherState.includes("안개")) {
+          finalWeather = "흐림";
+        } else if (weatherState.includes("바람") || weatherState.includes("태풍") || weatherState.includes("황사")) {
+          finalWeather = "바람";
+        }
+      }
+
+      return {
+        success: tempMax !== null && tempMin !== null && weatherState !== null,
+        tempMax,
+        tempMin,
+        weatherState: finalWeather,
+        rawState: weatherState
+      };
+    }
+
+    async function testProxy(type) {
+      const address = document.getElementById('addressInput').value || "문경시 산양면";
+      const resultBox = document.getElementById(`result-${type}`);
+      const btn = document.getElementById(`btn-${type}`);
+      
+      btn.disabled = true;
+      resultBox.innerHTML = '<span class="badge badge-pending">요청 중...</span>';
+      
+      const query = encodeURIComponent(`${address} 날씨`);
+      const naverUrl = `https://search.naver.com/search.naver?query=${query}`;
+      
+      addLog(`\n--- [${type.toUpperCase()} 테스트 시작] 주소: ${address} ---`);
+      
+      let fetchUrl = '';
+      
+      if (type === 'allorigins') {
+        fetchUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(naverUrl)}`;
+      } else if (type === 'corsproxy') {
+        fetchUrl = `https://corsproxy.io/?${encodeURIComponent(naverUrl)}`;
+      } else {
+        fetchUrl = naverUrl;
+      }
+      
+      const startTime = performance.now();
+      
+      try {
+        addLog(`Fetch 요청 시작: ${fetchUrl}`);
+        const response = await fetch(fetchUrl);
+        const duration = ((performance.now() - startTime) / 1000).toFixed(2);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP 에러! 상태코드: ${response.status}`);
+        }
+        
+        let html = '';
+        if (type === 'allorigins') {
+          const json = await response.json();
+          html = json.contents;
+        } else {
+          html = await response.text();
+        }
+        
+        addLog(`네트워크 응답 수신 완료 (소요시간: ${duration}초, 데이터 크기: ${html.length} bytes)`);
+        
+        const result = parseNaverWeather(html);
+        
+        if (result.success) {
+          resultBox.innerHTML = `
+            <span class="badge badge-success">성공 (${duration}초)</span>
+            <div class="weather-info">
+              <div class="weather-item">날씨: ${result.weatherState}</div>
+              <div class="weather-item">최고: ${result.tempMax}℃</div>
+              <div class="weather-item">최저: ${result.tempMin}℃</div>
+            </div>
+          `;
+          addLog(`✅ 테스트 성공! 날씨: ${result.weatherState}, 최고: ${result.tempMax}℃, 최저: ${result.tempMin}℃`);
+        } else {
+          resultBox.innerHTML = `
+            <span class="badge badge-error">파싱 실패 (${duration}초)</span>
+            <div style="font-size: 0.8rem; margin-top: 0.5rem; color: var(--text-sub)">HTML은 가져왔으나 정규식 파싱 실패. 로그를 확인하세요.</div>
+          `;
+          addLog(`❌ HTML 획득은 성공했으나 파싱 실패!`);
+        }
+        
+      } catch (err) {
+        const duration = ((performance.now() - startTime) / 1000).toFixed(2);
+        resultBox.innerHTML = `
+          <span class="badge badge-error">에러 발생 (${duration}초)</span>
+          <div style="font-size: 0.8rem; margin-top: 0.5rem; color: var(--error)">${err.message}</div>
+        `;
+        addLog(`❌ 통신 실패 및 CORS 차단 발생: ${err.message}`);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
+

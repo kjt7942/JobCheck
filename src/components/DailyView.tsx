@@ -188,10 +188,32 @@ export default function DailyView({
   };
 
   // 🚀 스마트 농장 실시간 날씨 네이버 검색 파싱 연동 엔진
-  const fetchFarmWeather = async () => {
+  const fetchFarmWeather = async (isEdit: boolean = false) => {
     // 1. 농장 설정 정보 가져오기 (설정이 없으면 기본 주소 "문경시 산양면", 기본 이름 "꿀송이농장" 적용)
-    const farmAddress = settings?.location || "문경시 산양면";
+    const rawAddress = settings?.location || "문경시 산양면";
     const farmName = settings?.farm_name || "꿀송이농장";
+
+    // 읍/면/동/리/가 단위까지만 주소를 잘라서 네이버 날씨 검색 카드가 무조건 나오도록 가공
+    const cleanAddressForWeather = (addr: string): string => {
+      if (!addr) return "문경시 산양면";
+      const tokens = addr.split(/\s+/);
+      const cleanTokens: string[] = [];
+      for (const token of tokens) {
+        cleanTokens.push(token);
+        if (
+          token.endsWith("읍") ||
+          token.endsWith("면") ||
+          token.endsWith("동") ||
+          token.endsWith("리") ||
+          token.endsWith("가")
+        ) {
+          break;
+        }
+      }
+      return cleanTokens.join(" ");
+    };
+
+    const farmAddress = cleanAddressForWeather(rawAddress);
 
     let apiSuccess = false;
     let autoTempMax = 30; // 디폴트 최고 기온
@@ -200,40 +222,174 @@ export default function DailyView({
 
     triggerToast(`📡 [네이버 날씨 연동] ${farmName}(${farmAddress})의 실시간 날씨 정보를 수신하는 중...`);
 
+    // 1단계: 브라우저(클라이언트) 직접 CORS 프록시 우회 fetch 시도
     try {
-      // 2. Next.js 서버 사이드 네이버 검색 파서 API 라우트 호출 (CORS 회피)
-      const apiUrl = `/api/weather?address=${encodeURIComponent(farmAddress)}`;
+      console.log(`[클라이언트 날씨 크롤링 시도] 주소: ${farmAddress} (원본: ${rawAddress})`);
+      const query = encodeURIComponent(`${farmAddress} 날씨`);
+      const naverUrl = `https://search.naver.com/search.naver?query=${query}`;
+      const clientFetchUrl = `https://corsproxy.io/?${encodeURIComponent(naverUrl)}`;
 
       const controller = new AbortController();
-      const id = setTimeout(() => controller.abort(), 4500); // 4.5초 타임아웃 마진
-
-      const response = await fetch(apiUrl, { signal: controller.signal });
+      const id = setTimeout(() => controller.abort(), 4000); // 4초 타임아웃
+      const response = await fetch(clientFetchUrl, { signal: controller.signal });
       clearTimeout(id);
 
       if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          autoTempMax = data.temp_max;
-          autoTempMin = data.temp_min;
-          autoWeather = data.weather;
+        const html = await response.text();
+        
+        // 최고/최저 기온 정밀 매칭
+        let tempMaxVal: number | null = null;
+        let tempMinVal: number | null = null;
+
+        // 🌟 [최우선 순위] 주간 예보 (weekly_forecast_area) 내의 "오늘" 영역 파싱
+        const weeklyForecastIndex = html.indexOf('weekly_forecast_area');
+        let weeklyTodayParsed = false;
+        let weatherState: string | null = null;
+
+        if (weeklyForecastIndex !== -1) {
+          const weeklyHtml = html.substring(weeklyForecastIndex, weeklyForecastIndex + 10000);
+          const todayMatch = weeklyHtml.match(/<li class="week_item\s+today">([\s\S]*?)<\/li>/);
+          
+          if (todayMatch) {
+            const todayHtml = todayMatch[1];
+            const lowMatch = todayHtml.match(/class="lowest"[\s\S]*?(-?\d+)°/);
+            const highMatch = todayHtml.match(/class="highest"[\s\S]*?(-?\d+)°/);
+            
+            // 오늘 오전 날씨 파싱
+            let morningWeather: string | null = null;
+            const cellWeatherMatch = todayHtml.match(/<div class="cell_weather">([\s\S]*?)<\/div>/);
+            if (cellWeatherMatch) {
+              const cellWeatherHtml = cellWeatherMatch[1];
+              const blindMatch = cellWeatherHtml.match(/<span class="blind">([^<]+)<\/span>/);
+              if (blindMatch) {
+                morningWeather = blindMatch[1].trim();
+              }
+            }
+            
+            if (lowMatch && highMatch && morningWeather) {
+              tempMinVal = parseInt(lowMatch[1], 10);
+              tempMaxVal = parseInt(highMatch[1], 10);
+              weatherState = morningWeather;
+              weeklyTodayParsed = true;
+            }
+          }
+        }
+
+        // 만약 주간 예보 파싱에 실패한 경우 기존 레거시 다단계 정규식들로 자동 백업 시도
+        if (!weeklyTodayParsed) {
+          const highestMatch = html.match(/최고기온\s*(-?\d+)°/);
+          const highestMatch2 = html.match(/최고\s*기온\s*(-?\d+)°/);
+          const desktopHigh = html.match(/class="[^"]*high[^"]*"[^>]*>(-?\d+)°/);
+          const desktopHigh2 = html.match(/(-?\d+)°<span class="blind">최고기온<\/span>/);
+          const weeklyHigh = html.match(/<span class="highest">[\s\S]*?(-?\d+)°/);
+          const temperatureHigh = html.match(/temperature_text[\s\S]*?highest[\s\S]*?(-?\d+)°/);
+
+          if (highestMatch && highestMatch[1]) tempMaxVal = parseInt(highestMatch[1], 10);
+          else if (highestMatch2 && highestMatch2[1]) tempMaxVal = parseInt(highestMatch2[1], 10);
+          else if (desktopHigh2 && desktopHigh2[1]) tempMaxVal = parseInt(desktopHigh2[1], 10);
+          else if (desktopHigh && desktopHigh[1]) tempMaxVal = parseInt(desktopHigh[1], 10);
+          else if (weeklyHigh && weeklyHigh[1]) tempMaxVal = parseInt(weeklyHigh[1], 10);
+          else if (temperatureHigh && temperatureHigh[1]) tempMaxVal = parseInt(temperatureHigh[1], 10);
+
+          const lowestMatch = html.match(/최저기온\s*(-?\d+)°/);
+          const lowestMatch2 = html.match(/최저\s*기온\s*(-?\d+)°/);
+          const desktopLow = html.match(/class="[^"]*low[^"]*"[^>]*>(-?\d+)°/);
+          const desktopLow2 = html.match(/(-?\d+)°<span class="blind">최저기온<\/span>/);
+          const weeklyLow = html.match(/<span class="lowest">[\s\S]*?(-?\d+)°/);
+          const temperatureLow = html.match(/temperature_text[\s\S]*?lowest[\s\S]*?(-?\d+)°/);
+
+          if (lowestMatch && lowestMatch[1]) tempMinVal = parseInt(lowestMatch[1], 10);
+          else if (lowestMatch2 && lowestMatch2[1]) tempMinVal = parseInt(lowestMatch2[1], 10);
+          else if (desktopLow2 && desktopLow2[1]) tempMinVal = parseInt(desktopLow2[1], 10);
+          else if (desktopLow && desktopLow[1]) tempMinVal = parseInt(desktopLow[1], 10);
+          else if (weeklyLow && weeklyLow[1]) tempMinVal = parseInt(weeklyLow[1], 10);
+          else if (temperatureLow && temperatureLow[1]) tempMinVal = parseInt(temperatureLow[1], 10);
+
+          // 날씨 상태 레거시 매칭
+          const weatherMatch = html.match(/<span class="weather before_slash">([^<]+)<\/span>/);
+          const weatherMatch2 = html.match(/<span class="weather">([^<]+)<\/span>/);
+          const weatherMatch3 = html.match(/class="weather"[^>]*>([^<]+)<\/span>/);
+
+          if (weatherMatch && weatherMatch[1]) weatherState = weatherMatch[1].trim();
+          else if (weatherMatch2 && weatherMatch2[1]) weatherState = weatherMatch2[1].trim();
+          else if (weatherMatch3 && weatherMatch3[1]) weatherState = weatherMatch3[1].trim();
+          else {
+            const summaryMatch = html.match(/class="summary"[^>]*>([^<]+)<\/p>/);
+            if (summaryMatch && summaryMatch[1]) {
+              const summaryText = summaryMatch[1];
+              if (summaryText.includes("비") || summaryText.includes("소나기")) weatherState = "비";
+              else if (summaryText.includes("눈")) weatherState = "눈";
+              else if (summaryText.includes("흐림")) weatherState = "흐림";
+              else if (summaryText.includes("구름") || summaryText.includes("맑음")) {
+                weatherState = summaryText.includes("맑음") ? "맑음" : "흐림";
+              }
+            }
+          }
+        }
+
+        if (tempMaxVal !== null && tempMinVal !== null && weatherState !== null) {
+          autoTempMax = tempMaxVal;
+          autoTempMin = tempMinVal;
+          
+          let finalWeather = "맑음";
+          if (weatherState.includes("비") || weatherState.includes("소나기") || weatherState.includes("강수")) finalWeather = "비";
+          else if (weatherState.includes("눈") || weatherState.includes("진눈깨비")) finalWeather = "눈";
+          else if (weatherState.includes("흐림") || weatherState.includes("구름많음") || weatherState.includes("안개")) finalWeather = "흐림";
+          else if (weatherState.includes("바람") || weatherState.includes("태풍") || weatherState.includes("황사")) finalWeather = "바람";
+          
+          autoWeather = finalWeather;
           apiSuccess = true;
-          triggerToast(`✅ 네이버 실시간 날씨 연동에 완벽히 성공했습니다! (${farmAddress})`);
+          triggerToast(`✅ [초고속 우회] 네이버 날씨 클라이언트 연동 성공! (${farmAddress})`);
+          console.log(`[클라이언트 날씨 파싱 성공] 최고: ${tempMaxVal}, 최저: ${tempMinVal}, 날씨: ${finalWeather}`);
         }
       }
     } catch (error) {
-      console.warn("네이버 날씨 API 호출 실패:", error);
+      console.warn("클라이언트 사이드 날씨 우회 시도 실패, 서버 사이드 백업 호출로 이관:", error);
+    }
+
+    // 2단계: 클라이언트 직접 연동 실패 시, 기존 서버사이드 백업 API 라우트 호출
+    if (!apiSuccess) {
+      try {
+        console.log(`[서버 백업 API 호출] 주소: ${farmAddress}`);
+        const apiUrl = `/api/weather?address=${encodeURIComponent(farmAddress)}`;
+
+        const controller = new AbortController();
+        const id = setTimeout(() => controller.abort(), 4500); // 4.5초 타임아웃 마진
+
+        const response = await fetch(apiUrl, { signal: controller.signal });
+        clearTimeout(id);
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success) {
+            autoTempMax = data.temp_max;
+            autoTempMin = data.temp_min;
+            autoWeather = data.weather;
+            apiSuccess = true;
+            triggerToast(`✅ [백업 서버] 네이버 날씨 서버 백업 연동 성공! (${farmAddress})`);
+          }
+        }
+      } catch (error) {
+        console.warn("네이버 날씨 서버 백업 API 호출 실패:", error);
+      }
     }
 
     // 3. 네이버 장애/네트워크 차단 시 안내 메시지 노출 및 수동 입력 유도
     if (!apiSuccess) {
-      triggerToast("⚠️ 네이버 날씨 검색 서버가 응답하지 않습니다. 날씨와 기온을 직접 입력해 주세요!");
+      triggerToast("⚠️ 네이버 날씨 연동에 실패했습니다. 날씨와 기온을 직접 입력해 주세요!");
       return;
     }
 
     // 4. 화면 최고/최저 기온 및 날씨 적용 (API 성공 시에만 적용)
-    setTmx(String(autoTempMax));
-    setTmn(String(autoTempMin));
-    setManualWeather(autoWeather);
+    if (isEdit) {
+      setEditTmx(String(autoTempMax));
+      setEditTmn(String(autoTempMin));
+      setEditWeather(autoWeather);
+    } else {
+      setTmx(String(autoTempMax));
+      setTmn(String(autoTempMin));
+      setManualWeather(autoWeather);
+    }
   };
 
 
@@ -1201,7 +1357,7 @@ export default function DailyView({
                     <label className="text-xs font-semibold text-gray-500 uppercase">날씨 선택</label>
                     <button
                       type="button"
-                      onClick={fetchFarmWeather}
+                      onClick={() => fetchFarmWeather(false)}
                       className="flex items-center gap-1 text-[10px] font-black text-blue-600 bg-blue-500/10 border border-blue-500/20 px-2.5 py-1 rounded-xl hover:bg-blue-500/20 transition-all active:scale-95"
                     >
                       <RefreshCw className="w-3 h-3" /> 🌦️ 농장 기상 연동
@@ -1212,7 +1368,7 @@ export default function DailyView({
                       <button
                         key={opt.label}
                         type="button"
-                        onClick={() => setManualWeather(opt.label)}
+                        onClick={() => setManualWeather(prev => prev === opt.label ? "" : opt.label)}
                         className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all duration-300 hover:scale-105 active:scale-95 ${manualWeather === opt.label
                           ? "bg-green-600 border-green-600 text-white shadow-md shadow-green-500/20"
                           : "bg-[var(--input-bg)] border-[var(--card-border)] text-gray-400 hover:border-green-500/30 hover:bg-[var(--card-bg)]"
@@ -1445,13 +1601,22 @@ export default function DailyView({
 
               {/* Weather Description */}
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-gray-400 uppercase">날씨 선택</label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-gray-400 uppercase">날씨 선택</label>
+                  <button
+                    type="button"
+                    onClick={() => fetchFarmWeather(true)}
+                    className="flex items-center gap-1 text-[9px] font-black text-blue-600 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-lg hover:bg-blue-500/20 transition-all active:scale-95"
+                  >
+                    <RefreshCw className="w-2.5 h-2.5" /> 🌦️ 농장 기상 연동
+                  </button>
+                </div>
                 <div className="grid grid-cols-5 gap-1">
                   {weatherOptions.map((opt) => (
                     <button
                       key={opt.label}
                       type="button"
-                      onClick={() => setEditWeather(opt.label)}
+                      onClick={() => setEditWeather(prev => prev === opt.label ? "" : opt.label)}
                       className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all duration-300 hover:scale-105 active:scale-95 ${editWeather === opt.label
                         ? "bg-green-600 border-green-600 text-white shadow-md shadow-green-500/10"
                         : "bg-[var(--input-bg)] border-[var(--card-border)] text-gray-400 hover:border-green-500/30 hover:bg-[var(--card-bg)]"
