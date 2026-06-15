@@ -389,7 +389,7 @@ export default function WeeklyView({
                               </div>
                             </div>
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all shrink-0">
-                              {canWrite && (
+                              {canWrite && !task.id!.includes('.') && (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); startEdit(task); }}
                                   className="p-1.5 text-gray-400 hover:text-green-500 hover:bg-green-500/10 rounded-md transition-all"
@@ -397,7 +397,7 @@ export default function WeeklyView({
                                   <Edit2 className="w-3.5 h-3.5" />
                                 </button>
                               )}
-                              {canDelete && (
+                              {canDelete && !task.id!.includes('.') && (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); onDelete(task.id!); }}
                                   className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-md transition-all"

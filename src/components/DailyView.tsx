@@ -1739,7 +1739,7 @@ export default function DailyView({
       {/* 🔄 반복 일정 수정 옵션 선택 모달 */}
       {showRecurrenceUpdateModal && (
         <div 
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-md animate-in fade-in duration-300 px-4"
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-md animate-in fade-in duration-300 px-4"
           onClick={() => setShowRecurrenceUpdateModal(false)}
         >
           <div 

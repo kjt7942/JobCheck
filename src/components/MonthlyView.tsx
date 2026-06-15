@@ -56,7 +56,19 @@ export default function MonthlyView({
 }: {
   tasks: Job[];
   farmInfo: any;
-  onAdd: (task: string, date: string) => void;
+  onAdd: (
+    task: string, 
+    date: string, 
+    weather?: string, 
+    temp_max?: string | number, 
+    temp_min?: string | number, 
+    group_id?: string, 
+    imageFiles?: File[],
+    recurrence?: any,
+    is_instance?: boolean,
+    instance_date?: string,
+    is_cancelled?: boolean
+  ) => void;
   onToggle: (id: string, is_done: boolean) => void;
   onDelete: (id: string) => void;
   onUpdate: (id: string, updates: Partial<Job>, newImageFiles?: File[]) => void;
@@ -136,6 +148,40 @@ export default function MonthlyView({
 
     onUpdate(id, updates, editImageFiles);
     setEditingId(null);
+  };
+
+  const handleToggleClick = (id: string, is_done: boolean) => {
+    if (id.includes('.')) {
+      // 1. 가상 일정의 토글 -> 실제 변경 인스턴스 문서를 DB에 신규 작성
+      const [masterId, instDate] = id.split('.');
+      const masterTask = tasks.find(t => t.id === masterId);
+      if (masterTask) {
+        const masterStartDate = new Date(masterTask.date);
+        onAdd(
+          masterTask.task,
+          new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), masterStartDate.getHours(), masterStartDate.getMinutes()).toISOString(),
+          masterTask.weather || "",
+          masterTask.temp_max,
+          masterTask.temp_min,
+          masterTask.group_id,
+          undefined, // 이미지 파일 없음
+          undefined, // recurrence 없음
+          true,      // is_instance = true
+          instDate,  // instance_date = instDate
+          false      // is_cancelled = false
+        );
+        // 낙관적 업데이트를 위해 is_done 변경
+        setTimeout(() => {
+          const newInst = tasks.find(t => t.is_instance && t.instance_date === instDate && t.group_id === masterTask.group_id);
+          if (newInst && newInst.id) {
+            onToggle(newInst.id, is_done);
+          }
+        }, 1000);
+      }
+    } else {
+      // 2. 일반 일정 토글
+      onToggle(id, is_done);
+    }
   };
 
   const weatherOptions = [
@@ -503,19 +549,21 @@ export default function MonthlyView({
                 </div>
 
                 <div className="hidden md:block space-y-1">
-                    {dayTasks.slice(0, 3).map((task) => (
-                      <div
-                        key={task.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (canWrite) {
-                            startEdit(task);
-                          }
-                        }}
-                        className={`text-[10px] px-1.5 py-0.5 rounded-md truncate border ${task.is_done
-                          ? "bg-[var(--input-bg)] border-[var(--card-border)] text-gray-400 line-through opacity-50"
-                          : "bg-[var(--card-bg)] border-green-500/20 text-green-600 shadow-sm"
-                          } ${canWrite ? "cursor-pointer hover:bg-green-500/10 transition-colors" : ""}`}
+                    {dayTasks.slice(0, 3).map((task) => {
+                      const isVirtual = task.id!.includes('.');
+                      return (
+                        <div
+                          key={task.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (canWrite && !isVirtual) {
+                              startEdit(task);
+                            }
+                          }}
+                          className={`text-[10px] px-1.5 py-0.5 rounded-md truncate border ${task.is_done
+                            ? "bg-[var(--input-bg)] border-[var(--card-border)] text-gray-400 line-through opacity-50"
+                            : "bg-[var(--card-bg)] border-green-500/20 text-green-600 shadow-sm"
+                            } ${canWrite && !isVirtual ? "cursor-pointer hover:bg-green-500/10 transition-colors" : ""}`}
                       >
                         <div className="flex items-center justify-between gap-1 overflow-hidden">
                           <span className="truncate">{task.task}</span>
@@ -534,7 +582,8 @@ export default function MonthlyView({
                           )}
                         </div>
                       </div>
-                    ))}
+                    );
+                   })}
                   {dayTasks.length > 3 && (
                     <p className="text-[9px] text-gray-400 pl-1">
                       외 {dayTasks.length - 3}개...
@@ -580,7 +629,7 @@ export default function MonthlyView({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (canWrite) onToggle(task.id!, !task.is_done);
+                    if (canWrite) handleToggleClick(task.id!, !task.is_done);
                   }}
                   disabled={!canWrite}
                   className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${task.is_done ? 'bg-green-500 border-green-500' : 'border-gray-200'} ${!canWrite ? 'opacity-50 cursor-default' : 'active:scale-90'}`}
@@ -631,7 +680,7 @@ export default function MonthlyView({
                 )}
                 {/* 모바일 액션 단추 (수정/삭제) */}
                 <div className="flex items-center gap-1 shrink-0 ml-1">
-                  {canWrite && (
+                  {canWrite && !task.id!.includes('.') && (
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); startEdit(task); }}
@@ -641,7 +690,7 @@ export default function MonthlyView({
                       <Edit2 className="w-4 h-4" />
                     </button>
                   )}
-                  {canDelete && (
+                  {canDelete && !task.id!.includes('.') && (
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); onDelete(task.id!); }}
