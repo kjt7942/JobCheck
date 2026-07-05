@@ -1325,7 +1325,7 @@ export default function DailyView({
                       ) : null}
                     </button>
 
-                    <div className="flex flex-col sm:flex-row items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                    <div className="flex flex-col sm:flex-row items-center gap-1 transition-all">
                       {canWrite && (
                         <button
                           onClick={(e) => { e.stopPropagation(); startEdit(task); }}
