@@ -222,12 +222,10 @@ export default function DailyView({
       counts[cleanTask] = (counts[cleanTask] || 0) + 1;
     });
 
-    // 3. 가장 많이 쓰인 상위 5개 추출
-    const topKeywords = Object.keys(counts)
-      .sort((a, b) => counts[b] - counts[a])
-      .slice(0, 5);
+    // 3. 빈도순 정렬된 고유 키워드들
+    const sortedKeywords = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
 
-    if (topKeywords.length === 0) return;
+    if (sortedKeywords.length === 0) return;
 
     // 4. 이모지 매칭 헬퍼
     const matchEmoji = (text: string): string => {
@@ -241,8 +239,37 @@ export default function DailyView({
       return "🌱";
     };
 
-    // 5. 추천 프리셋 가공 (첫 어절을 라벨로 활용하고, 풀텍스트를 입력 값으로 활용)
-    const calculatedPresets = topKeywords.map(keyword => {
+    // 5. 중복 카테고리(이모지) 제거 필터링 루프
+    const selectedKeywords: string[] = [];
+    const usedEmojis = new Set<string>();
+
+    for (const kw of sortedKeywords) {
+      if (selectedKeywords.length >= 5) break;
+      const emoji = matchEmoji(kw);
+      
+      // 이미 추천된 동일 작업 종류(이모지)라면 스킵 (다양성 확보)
+      if (emoji !== "🌱" && usedEmojis.has(emoji)) {
+        continue;
+      }
+      
+      selectedKeywords.push(kw);
+      if (emoji !== "🌱") {
+        usedEmojis.add(emoji);
+      }
+    }
+
+    // 6. 만약 다양성을 챙기느라 5개가 다 안 찼다면 남은 자리는 빈도 정렬순으로 중복 무시하고 보충
+    if (selectedKeywords.length < 5) {
+      for (const kw of sortedKeywords) {
+        if (selectedKeywords.length >= 5) break;
+        if (!selectedKeywords.includes(kw)) {
+          selectedKeywords.push(kw);
+        }
+      }
+    }
+
+    // 7. 추천 프리셋 가공 (첫 어절을 라벨로 활용하고, 풀텍스트를 입력 값으로 활용)
+    const calculatedPresets = selectedKeywords.map(keyword => {
       const emoji = matchEmoji(keyword);
       const firstWord = keyword.split(" ")[0];
       const labelText = firstWord.length <= 1 && keyword.split(" ").length > 1 
