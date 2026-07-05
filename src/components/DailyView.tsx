@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { format, isSameDay, addDays, subDays, addWeeks, subWeeks, addMonths } from "date-fns";
 import { ko } from "date-fns/locale";
 import { Job } from "@/types";
@@ -146,6 +146,12 @@ export default function DailyView({
   const { settings } = useApp();
   const [newTitle, setNewTitle] = useState("");
   const [startDate, setStartDate] = useState<Date | null>(new Date());
+
+  // 💡 DB에서 유니크한 일정 목록을 수집하여 자동완성에 제공
+  const uniqueTaskNames = useMemo(() => {
+    if (!tasks) return [];
+    return Array.from(new Set(tasks.map(t => t.task?.trim()).filter(Boolean)));
+  }, [tasks]);
 
   // 🔄 반복 일정 수정 옵션 모달 및 펜딩 작업 상태
   const [showRecurrenceUpdateModal, setShowRecurrenceUpdateModal] = useState(false);
@@ -1399,8 +1405,14 @@ export default function DailyView({
                     value={newTitle}
                     onChange={(e) => setNewTitle(e.target.value)}
                     placeholder="예: 과수원 물주기"
+                    list="tasks-datalist"
                     className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-sm text-[var(--foreground)] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-400/20 focus:border-green-500 transition-all font-bold"
                   />
+                  <datalist id="tasks-datalist">
+                    {uniqueTaskNames.map((name) => (
+                      <option key={name} value={name} />
+                    ))}
+                  </datalist>
                 </div>
                 {/* 🌾 농장 전용 퀵 템플릿 원클릭 카드 단추 */}
                 <div className="flex flex-wrap gap-1.5 pt-1">
