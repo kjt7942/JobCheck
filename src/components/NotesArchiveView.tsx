@@ -117,7 +117,7 @@ export default function NotesArchiveView({ tasks }: NotesArchiveViewProps) {
           <p className="text-xs text-gray-400 leading-relaxed max-w-xs mx-auto">
             {searchQuery || selectedTag
               ? "검색어나 필터 조건을 변경해 보세요."
-              : "일정 수정 화면에서 '영농 피드백'을 남겨주시면 이곳에 아카이브되어 내년에 큰 자산이 됩니다!"}
+              : "일정 수정 화면에서 '영농 피드백'을 남겨주시면 이곳에 기록되어 내년에 큰 자산이 됩니다!"}
           </p>
         </div>
       ) : (
