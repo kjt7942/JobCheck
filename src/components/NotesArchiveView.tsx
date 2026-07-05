@@ -135,9 +135,6 @@ export default function NotesArchiveView({ tasks }: NotesArchiveViewProps) {
               {/* Note Header */}
               <div className="flex items-start justify-between gap-4">
                 <div className="space-y-1">
-                  <span className="text-[10px] font-black bg-amber-500/10 text-amber-600 dark:text-amber-500 px-2 py-0.5 rounded-md">
-                    📝 오답 개선노트
-                  </span>
                   <h3 className="text-sm font-black text-[var(--foreground)] tracking-tight">
                     {job.task}
                   </h3>
