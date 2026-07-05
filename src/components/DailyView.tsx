@@ -1294,11 +1294,19 @@ export default function DailyView({
                               {task.weather}
                             </span>
                           )}
-                          {(task.temp_max !== undefined || task.temp_min !== undefined) && (
+                          {((task.temp_max !== undefined && task.temp_max !== null && !isNaN(Number(task.temp_max))) || 
+                            (task.temp_min !== undefined && task.temp_min !== null && !isNaN(Number(task.temp_min)))) && (
                             <span className="flex items-center gap-1 border-l border-green-500/20 pl-1.5">
-                              <span className="text-red-400 hover:scale-110 transition-transform cursor-help">{task.temp_max}℃</span>
-                              <span className="text-gray-400 opacity-50">/</span>
-                              <span className="text-blue-400 hover:scale-110 transition-transform cursor-help">{task.temp_min}℃</span>
+                              {task.temp_max !== undefined && task.temp_max !== null && !isNaN(Number(task.temp_max)) && (
+                                <span className="text-red-400 hover:scale-110 transition-transform cursor-help">{task.temp_max}℃</span>
+                              )}
+                              {task.temp_max !== undefined && task.temp_max !== null && !isNaN(Number(task.temp_max)) && 
+                               task.temp_min !== undefined && task.temp_min !== null && !isNaN(Number(task.temp_min)) && (
+                                <span className="text-gray-400 opacity-50">/</span>
+                              )}
+                              {task.temp_min !== undefined && task.temp_min !== null && !isNaN(Number(task.temp_min)) && (
+                                <span className="text-blue-400 hover:scale-110 transition-transform cursor-help">{task.temp_min}℃</span>
+                              )}
                             </span>
                           )}
                         </div>
@@ -1326,7 +1334,7 @@ export default function DailyView({
                     </button>
 
                     <div className="flex flex-col sm:flex-row items-center gap-1 transition-all">
-                      {canWrite && (
+                      {canWrite && !task.id?.includes('.') && (
                         <button
                           onClick={(e) => { e.stopPropagation(); startEdit(task); }}
                           className="p-1.5 text-gray-400 hover:text-green-500 hover:bg-green-500/10 rounded-lg transition-all"
@@ -1335,7 +1343,7 @@ export default function DailyView({
                           <Edit2 className="w-4 h-4" />
                         </button>
                       )}
-                      {canDelete && (
+                      {canDelete && !task.id?.includes('.') && (
                         <button
                           onClick={(e) => { e.stopPropagation(); handleDeleteClick(task.id!); }}
                           className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
