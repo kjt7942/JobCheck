@@ -319,7 +319,7 @@ export default function Home() {
               <div className={`p-1 rounded-xl transition-all ${isActive ? 'bg-green-500/10' : ''}`}>
                 <Icon className={`w-6 h-6 transition-transform ${isActive ? 'scale-110' : 'scale-100'}`} />
               </div>
-              <span className="text-[10px] font-bold">{tab.label.replace(' 일정', '').replace(' 달력', '').replace(' 할일', '')}</span>
+              <span className="text-[10px] font-bold">{tab.label.replace(' 일정', '').replace(' 달력', '').replace(' 할일', '').replace('개선 노트', '노트')}</span>
               {isActive && (
                 <div className="absolute -top-3 w-1 h-1 bg-green-500 rounded-full" />
               )}
