@@ -627,7 +627,7 @@ export default function MonthlyView({
             <summary className="flex items-center justify-between cursor-pointer font-bold text-xs text-orange-600 list-none select-none">
               <div className="flex items-center gap-2">
                 <StickyNote className="w-4 h-4 text-orange-500" />
-                <span>💡 작년 {format(currentDate, "M월")} 대장님의 농장 개선 조언 ({lastYearMonthlyFeedbacks.length}건)</span>
+                <span>💡 작년 {format(currentDate, "M월")} 농장 개선 조언 ({lastYearMonthlyFeedbacks.length}건)</span>
               </div>
               <span className="text-[10px] text-orange-500 group-open:rotate-180 transition-transform">▼</span>
             </summary>

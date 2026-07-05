@@ -54,7 +54,7 @@ export default function NotesArchiveView({ tasks }: NotesArchiveViewProps) {
         </div>
         <div>
           <h2 className="text-xl md:text-2xl font-bold text-[var(--foreground)]">영농 개선 노트</h2>
-          <p className="text-xs md:text-sm text-gray-400">대장님이 과거에 겪었던 시행착오와 조언들을 확인하고 더 나은 농사를 계획하세요.</p>
+          <p className="text-xs md:text-sm text-gray-400">과거에 겪었던 시행착오와 조언들을 확인하고 더 나은 농사를 계획하세요.</p>
         </div>
       </div>
 

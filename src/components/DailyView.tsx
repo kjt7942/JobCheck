@@ -1067,7 +1067,7 @@ export default function DailyView({
                 <StickyNote className="w-5 h-5" />
               </div>
               <div className="flex-1 min-w-0">
-                <h4 className="text-xs font-black text-orange-600">💡 작년 이맘때 대장님의 조언 ({lastYearFeedbackTasks.length}건)</h4>
+                <h4 className="text-xs font-black text-orange-600">💡 작년 이맘때의 조언 ({lastYearFeedbackTasks.length}건)</h4>
                 <div className="mt-1.5 space-y-1.5 max-h-[120px] overflow-y-auto pr-1">
                   {lastYearFeedbackTasks.map((t, idx) => (
                     <div key={t.id || idx} className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed border-b border-orange-500/5 pb-1.5 last:border-0 last:pb-0">
