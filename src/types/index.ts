@@ -25,6 +25,10 @@ export interface Job {
   is_instance?: boolean;       // 특정 날짜에 데이터가 변경되어 생성된 인스턴스 여부
   instance_date?: string;     // 인스턴스가 적용되는 구체적 날짜 (YYYY-MM-DD)
   is_cancelled?: boolean;     // 특정 날짜의 반복 일정이 삭제되었는지 여부
+
+  // 🆕 피드백 기능 관련 추가 필드
+  feedback?: string;          // 영농 개선 사항 및 잘못된 점 기록
+  feedback_tags?: string[];   // 피드백 관련 태그 리스트
 }
 
 /**

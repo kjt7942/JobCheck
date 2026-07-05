@@ -2,11 +2,12 @@
 console.log("Client: JS file evaluation started");
 
 import { useState, useEffect } from "react";
-import { CalendarDays, Calendar, ListTodo, CalendarRange, Sprout, Settings, LogOut, Wrench } from "lucide-react";
+import { CalendarDays, Calendar, ListTodo, CalendarRange, Sprout, Settings, LogOut, Wrench, StickyNote } from "lucide-react";
 import DailyView from "@/components/DailyView";
 import MonthlyView from "@/components/MonthlyView";
 import YearlyView from "@/components/YearlyView";
 import ToolsView from "@/components/ToolsView";
+import NotesArchiveView from "@/components/NotesArchiveView";
 import SettingsModal from "@/components/SettingsModal";
 import ConfirmModal from "@/components/ConfirmModal";
 import LoginView from "@/components/LoginView";
@@ -16,7 +17,7 @@ import { authService } from "@/services/authService";
 import { firestoreRepo } from "@/repo/firestoreRepository";
 import { Job, UserSettings } from "@/types";
 
-type Tab = "daily" | "monthly" | "yearly" | "tools";
+type Tab = "daily" | "monthly" | "yearly" | "tools" | "notes";
 
 export default function Home() {
   const { user, settings, loading: authLoading, logout, showToast, refreshSettings } = useApp();
@@ -106,7 +107,8 @@ export default function Home() {
     recurrence?: any,
     is_instance?: boolean,
     instance_date?: string,
-    is_cancelled?: boolean
+    is_cancelled?: boolean,
+    is_done?: boolean
   ) => {
     if (!user) return;
 
@@ -121,7 +123,7 @@ export default function Home() {
       await jobService.createJob({
         task,
         date,
-        is_done: false,
+        is_done: is_done || false,
         user_id: user.uid,
         group_id: group_id || "",
         weather: weather || "",
@@ -132,7 +134,11 @@ export default function Home() {
         instance_date: instance_date || undefined,
         is_cancelled: is_cancelled || undefined,
       }, imageFiles);
-      showToast("새로운 일정이 등록되었습니다.");
+      
+      // 가상 일정을 체크 완료할 때는 등록 완료 메시지를 생략함
+      if (!(is_instance && is_done)) {
+        showToast("새로운 일정이 등록되었습니다.");
+      }
     } catch (e) {
       showToast("일정 등록에 실패했습니다.", "error");
     }
@@ -227,6 +233,7 @@ export default function Home() {
     { id: "daily", label: "일일 할일", icon: ListTodo },
     { id: "monthly", label: "월간 달력", icon: CalendarRange },
     { id: "yearly", label: "연간 일정", icon: Calendar },
+    { id: "notes", label: "개선 노트", icon: StickyNote },
     { id: "tools", label: "도구", icon: Wrench },
   ];
 
@@ -422,6 +429,12 @@ export default function Home() {
 
             {activeTab === "tools" && (
               <ToolsView />
+            )}
+
+            {activeTab === "notes" && (
+              <NotesArchiveView
+                tasks={tasks}
+              />
             )}
           </div>
         )}

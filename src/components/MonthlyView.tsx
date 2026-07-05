@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths } from "date-fns";
 import { ko } from "date-fns/locale";
 import { Job } from "@/types";
-import { Plus, Check, Trash2, Clock, Calendar as CalendarIcon, CheckCircle2, ChevronLeft, ChevronRight, Activity, Search, Edit2, X, Save, Sun, CloudRain, Cloud, CloudSnow, RefreshCw, CalendarDays, CalendarRange, Camera } from "lucide-react";
+import { Plus, Check, Trash2, Clock, Calendar as CalendarIcon, CheckCircle2, ChevronLeft, ChevronRight, Activity, Search, Edit2, X, Save, Sun, CloudRain, Cloud, CloudSnow, RefreshCw, CalendarDays, CalendarRange, Camera, StickyNote } from "lucide-react";
 import DatePicker, { registerLocale } from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { compressImage } from "@/utils/imageUtils";
@@ -67,7 +67,8 @@ export default function MonthlyView({
     recurrence?: any,
     is_instance?: boolean,
     instance_date?: string,
-    is_cancelled?: boolean
+    is_cancelled?: boolean,
+    is_done?: boolean
   ) => void;
   onToggle: (id: string, is_done: boolean) => void;
   onDelete: (id: string) => void;
@@ -89,6 +90,8 @@ export default function MonthlyView({
   const [editImageFiles, setEditImageFiles] = useState<File[]>([]);
   const [editImagePreviews, setEditImagePreviews] = useState<string[]>([]);
   const [editExistingUrls, setEditExistingUrls] = useState<string[]>([]);
+  const [editFeedback, setEditFeedback] = useState("");
+  const [editFeedbackTags, setEditFeedbackTags] = useState("");
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -121,6 +124,8 @@ export default function MonthlyView({
     setEditImageFiles([]);
     setEditImagePreviews([]);
     setEditExistingUrls(job.image_urls || []);
+    setEditFeedback(job.feedback || "");
+    setEditFeedbackTags(job.feedback_tags ? job.feedback_tags.join(", ") : "");
   };
 
   const cancelEdit = () => {
@@ -133,6 +138,8 @@ export default function MonthlyView({
     setEditImageFiles([]);
     setEditImagePreviews([]);
     setEditExistingUrls([]);
+    setEditFeedback("");
+    setEditFeedbackTags("");
   };
 
   const handleSaveEdit = (id: string) => {
@@ -143,7 +150,11 @@ export default function MonthlyView({
       weather: editWeather,
       temp_max: editTmx ? parseFloat(editTmx) : undefined,
       temp_min: editTmn ? parseFloat(editTmn) : undefined,
-      image_urls: editExistingUrls
+      image_urls: editExistingUrls,
+      feedback: editFeedback.trim() || "",
+      feedback_tags: editFeedbackTags
+        ? editFeedbackTags.split(",").map(t => t.trim()).filter(t => t !== "")
+        : []
     };
 
     onUpdate(id, updates, editImageFiles);
@@ -168,15 +179,9 @@ export default function MonthlyView({
           undefined, // recurrence 없음
           true,      // is_instance = true
           instDate,  // instance_date = instDate
-          false      // is_cancelled = false
+          false,     // is_cancelled = false
+          is_done    // 🆕 완료 여부 즉시 저장
         );
-        // 낙관적 업데이트를 위해 is_done 변경
-        setTimeout(() => {
-          const newInst = tasks.find(t => t.is_instance && t.instance_date === instDate && t.group_id === masterTask.group_id);
-          if (newInst && newInst.id) {
-            onToggle(newInst.id, is_done);
-          }
-        }, 1000);
       }
     } else {
       // 2. 일반 일정 토글
@@ -440,6 +445,16 @@ export default function MonthlyView({
     return selStr > todayStr;
   })();
 
+  // 💡 현재 달의 작년(1년 전 동월) 피드백 노트 수집
+  const lastYearMonthlyFeedbacks = (() => {
+    return tasks.filter(t => {
+      if (!t.feedback || t.is_cancelled) return false;
+      const taskDate = new Date(t.date);
+      return taskDate.getMonth() === currentDate.getMonth() && 
+             taskDate.getFullYear() < currentDate.getFullYear();
+    });
+  })();
+
   return (
     <div 
       className="space-y-6 animate-in fade-in duration-500 pb-10"
@@ -517,7 +532,7 @@ export default function MonthlyView({
                       const dayStr = format(day, "yyyy-MM-dd");
                       if (dayStr > todayStr) return null; // 미래 날짜는 날씨 표시 안함
 
-                      const weatherTask = dayTasks.find(t => t.weather || t.temp_max !== undefined || t.temp_min !== undefined);
+                      const weatherTask = dayTasks.find(t => t.weather || (t.temp_max !== undefined && t.temp_max !== null && !isNaN(Number(t.temp_max))) || (t.temp_min !== undefined && t.temp_min !== null && !isNaN(Number(t.temp_min))));
                       if (!weatherTask) return null;
                       return (
                         <div className="flex items-center gap-0.5 text-[7.5px] md:text-[9px] text-green-600 font-bold bg-green-500/5 px-0.5 md:px-1 py-0 rounded scale-[0.82] sm:scale-100 origin-left shrink-0 ml-[-2px] sm:ml-0">
@@ -530,11 +545,13 @@ export default function MonthlyView({
                                <Cloud className="w-2 md:w-2.5 h-2 md:h-2.5 shrink-0" />}
                             </span>
                           )}
-                          {(weatherTask.temp_max !== undefined || weatherTask.temp_min !== undefined) && (
+                          {((weatherTask.temp_max !== undefined && weatherTask.temp_max !== null && !isNaN(Number(weatherTask.temp_max))) || 
+                            (weatherTask.temp_min !== undefined && weatherTask.temp_min !== null && !isNaN(Number(weatherTask.temp_min)))) && (
                             <span className="flex items-center font-mono scale-[0.9] pl-0.5 shrink-0 ml-0.5 border-l border-green-500/10">
-                              {weatherTask.temp_max !== undefined && <span className="text-red-400 font-black">{weatherTask.temp_max}</span>}
-                              {weatherTask.temp_max !== undefined && weatherTask.temp_min !== undefined && <span className="text-gray-400 opacity-40 mx-[0.5px]">/</span>}
-                              {weatherTask.temp_min !== undefined && <span className="text-blue-400 font-black">{weatherTask.temp_min}</span>}
+                              {weatherTask.temp_max !== undefined && weatherTask.temp_max !== null && !isNaN(Number(weatherTask.temp_max)) && <span className="text-red-400 font-black">{weatherTask.temp_max}</span>}
+                              {weatherTask.temp_max !== undefined && weatherTask.temp_max !== null && !isNaN(Number(weatherTask.temp_max)) && 
+                               weatherTask.temp_min !== undefined && weatherTask.temp_min !== null && !isNaN(Number(weatherTask.temp_min)) && <span className="text-gray-400 opacity-40 mx-[0.5px]">/</span>}
+                              {weatherTask.temp_min !== undefined && weatherTask.temp_min !== null && !isNaN(Number(weatherTask.temp_min)) && <span className="text-blue-400 font-black">{weatherTask.temp_min}</span>}
                             </span>
                           )}
                         </div>
@@ -603,6 +620,41 @@ export default function MonthlyView({
         </div>
       </div>
 
+      {/* 💡 작년 이맘때(동월) 대장님의 개선 노트 요약 아코디언 */}
+      {lastYearMonthlyFeedbacks.length > 0 && (
+        <div className="bg-orange-500/10 border border-orange-500/20 rounded-2xl p-4 animate-in slide-in-from-top duration-300">
+          <details className="group">
+            <summary className="flex items-center justify-between cursor-pointer font-bold text-xs text-orange-600 list-none select-none">
+              <div className="flex items-center gap-2">
+                <StickyNote className="w-4 h-4 text-orange-500" />
+                <span>💡 작년 {format(currentDate, "M월")} 대장님의 농장 개선 조언 ({lastYearMonthlyFeedbacks.length}건)</span>
+              </div>
+              <span className="text-[10px] text-orange-500 group-open:rotate-180 transition-transform">▼</span>
+            </summary>
+            <div className="mt-3 space-y-2 max-h-[200px] overflow-y-auto pr-1">
+              {lastYearMonthlyFeedbacks.map((t, idx) => (
+                <div key={t.id || idx} className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed border-b border-orange-500/5 pb-2 last:border-0 last:pb-0">
+                  <div className="flex justify-between items-center mb-0.5">
+                    <span className="font-bold text-[var(--foreground)]">[{t.task}]</span>
+                    <span className="text-[9px] text-gray-400 font-mono">{format(new Date(t.date), "yyyy-MM-dd")}</span>
+                  </div>
+                  <p>{t.feedback}</p>
+                  {t.feedback_tags && t.feedback_tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {t.feedback_tags.map(tag => (
+                        <span key={tag} className="bg-orange-500/5 text-orange-600 border border-orange-500/10 px-1 py-0.2 rounded text-[9px] font-bold">
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </details>
+        </div>
+      )}
+
       {/* Selected Day Tasks (Mobile Optimized List) */}
       <div className="md:hidden space-y-4 animate-in slide-in-from-bottom-2 duration-300">
         <div className="flex items-center justify-between px-1">
@@ -657,7 +709,9 @@ export default function MonthlyView({
                     )}
                   </p>
                 </div>
-                {!isSelectedDateFuture && (task.weather || task.temp_max !== undefined || task.temp_min !== undefined) && (
+                {!isSelectedDateFuture && (task.weather || 
+                  (task.temp_max !== undefined && task.temp_max !== null && !isNaN(Number(task.temp_max))) || 
+                  (task.temp_min !== undefined && task.temp_min !== null && !isNaN(Number(task.temp_min)))) && (
                   <div className="flex flex-col items-end gap-0.5 text-[10px] bg-green-500/10 text-green-600 px-2.5 py-1 rounded-xl font-bold shrink-0">
                     {task.weather && (
                       <span className="flex items-center gap-0.5">
@@ -669,11 +723,13 @@ export default function MonthlyView({
                         {task.weather}
                       </span>
                     )}
-                    {(task.temp_max !== undefined || task.temp_min !== undefined) && (
+                    {((task.temp_max !== undefined && task.temp_max !== null && !isNaN(Number(task.temp_max))) || 
+                      (task.temp_min !== undefined && task.temp_min !== null && !isNaN(Number(task.temp_min)))) && (
                       <span className="flex items-center font-mono text-[9px] mt-0.5">
-                        {task.temp_max !== undefined && <span className="text-red-400">{task.temp_max}℃</span>}
-                        {task.temp_max !== undefined && task.temp_min !== undefined && <span className="text-gray-400 opacity-50 mx-0.5">/</span>}
-                        {task.temp_min !== undefined && <span className="text-blue-400">{task.temp_min}℃</span>}
+                        {task.temp_max !== undefined && task.temp_max !== null && !isNaN(Number(task.temp_max)) && <span className="text-red-400">{task.temp_max}℃</span>}
+                        {task.temp_max !== undefined && task.temp_max !== null && !isNaN(Number(task.temp_max)) && 
+                         task.temp_min !== undefined && task.temp_min !== null && !isNaN(Number(task.temp_min)) && <span className="text-gray-400 opacity-50 mx-0.5">/</span>}
+                        {task.temp_min !== undefined && task.temp_min !== null && !isNaN(Number(task.temp_min)) && <span className="text-blue-400">{task.temp_min}℃</span>}
                       </span>
                     )}
                   </div>
@@ -1133,6 +1189,31 @@ export default function MonthlyView({
                     />
                   </label>
                 </div>
+              </div>
+
+              {/* 🆕 영농 피드백 입력란 */}
+              <div className="space-y-1.5 pt-1">
+                <label className="text-xs font-bold text-gray-400 uppercase flex items-center gap-1 text-orange-500">
+                  <span>📝 영농 피드백 (내년에 참고할 점)</span>
+                </label>
+                <textarea
+                  value={editFeedback}
+                  onChange={(e) => setEditFeedback(e.target.value)}
+                  placeholder="올해 작업 중 개선할 점, 실수, 조치 사항 등을 기록해 주세요."
+                  className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-sm text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-green-400/20 focus:border-green-500 transition-all font-medium min-h-[70px] resize-y"
+                />
+              </div>
+
+              {/* 🆕 영농 피드백 태그 입력란 */}
+              <div className="space-y-1.5 pt-1">
+                <label className="text-xs font-bold text-gray-400 uppercase text-orange-500">🏷️ 피드백 태그</label>
+                <input
+                  type="text"
+                  value={editFeedbackTags}
+                  onChange={(e) => setEditFeedbackTags(e.target.value)}
+                  placeholder="쉼표(,)로 구분하여 입력 (예: 상추, 비료, 장마)"
+                  className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-sm text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-green-400/20 focus:border-green-500 transition-all font-medium"
+                />
               </div>
             </div>
 
