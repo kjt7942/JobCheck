@@ -177,6 +177,93 @@ export default function DailyView({
   const [viewDate, setViewDate] = useState(new Date());
   const [selectedImageInfo, setSelectedImageInfo] = useState<{ urls: string[], index: number } | null>(null);
 
+  // 🚀 자주 사용하는 일정 프리셋 상태
+  const [quickPresets, setQuickPresets] = useState<{ label: string; value: string }[]>([]);
+
+  // 컴포넌트 마운트 시 로컬스토리지에서 퀵 프리셋 캐시 복구
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const cached = localStorage.getItem("quick_presets");
+      if (cached) {
+        try {
+          setQuickPresets(JSON.parse(cached));
+        } catch (e) {
+          setQuickPresets([
+            { label: "💧 물주기", value: "과수원 물주기" },
+            { label: "🧪 영양제", value: "영양제 및 비료 살포" },
+            { label: "🚜 로터리", value: "밭 로터리 작업" },
+            { label: "📦 수확", value: "농작물 수확 및 포장" },
+            { label: "🧹 정리", value: "비닐하우스 정리정돈" }
+          ]);
+        }
+      } else {
+        setQuickPresets([
+          { label: "💧 물주기", value: "과수원 물주기" },
+          { label: "🧪 영양제", value: "영양제 및 비료 살포" },
+          { label: "🚜 로터리", value: "밭 로터리 작업" },
+          { label: "📦 수확", value: "농작물 수확 및 포장" },
+          { label: "🧹 정리", value: "비닐하우스 정리정돈" }
+        ]);
+      }
+    }
+  }, []);
+
+  // 전체 일정이 변경될 때 자주 쓰는 키워드를 분석하여 백그라운드 랭킹 캐시 갱신
+  useEffect(() => {
+    if (!tasks || tasks.length === 0) return;
+
+    // 1. 유효 일정 필터링 (텍스트가 비어있지 않고, 취소되지 않은 마스터 및 일반 일정)
+    const validTasks = tasks.filter(t => t.task && t.task.trim() !== "" && !t.is_cancelled && !t.is_instance);
+
+    // 2. 단어/구문 빈도수 집계
+    const counts: { [key: string]: number } = {};
+    validTasks.forEach(t => {
+      const cleanTask = t.task.trim();
+      counts[cleanTask] = (counts[cleanTask] || 0) + 1;
+    });
+
+    // 3. 가장 많이 쓰인 상위 5개 추출
+    const topKeywords = Object.keys(counts)
+      .sort((a, b) => counts[b] - counts[a])
+      .slice(0, 5);
+
+    if (topKeywords.length === 0) return;
+
+    // 4. 이모지 매칭 헬퍼
+    const matchEmoji = (text: string): string => {
+      if (text.includes("물") || text.includes("소독") || text.includes("관수") || text.includes("물주기")) return "💧";
+      if (text.includes("비료") || text.includes("영양") || text.includes("살포") || text.includes("약") || text.includes("제초제")) return "🧪";
+      if (text.includes("로터리") || text.includes("밭") || text.includes("트랙터") || text.includes("경운") || text.includes("멀칭")) return "🚜";
+      if (text.includes("수확") || text.includes("포장") || text.includes("수집") || text.includes("따기")) return "📦";
+      if (text.includes("정리") || text.includes("하우스") || text.includes("청소") || text.includes("분리")) return "🧹";
+      if (text.includes("가지") || text.includes("전지") || text.includes("적과") || text.includes("순지르기") || text.includes("순")) return "✂️";
+      if (text.includes("파종") || text.includes("심기") || text.includes("이앙") || text.includes("모종")) return "🌱";
+      return "🌱";
+    };
+
+    // 5. 추천 프리셋 가공 (첫 어절을 라벨로 활용하고, 풀텍스트를 입력 값으로 활용)
+    const calculatedPresets = topKeywords.map(keyword => {
+      const emoji = matchEmoji(keyword);
+      const firstWord = keyword.split(" ")[0];
+      const labelText = firstWord.length <= 1 && keyword.split(" ").length > 1 
+        ? `${firstWord} ${keyword.split(" ")[1]}` 
+        : firstWord;
+
+      return {
+        label: `${emoji} ${labelText}`,
+        value: keyword
+      };
+    });
+
+    // 기존 캐시와 달라졌을 때만 갱신하여 무한 루프 방지
+    const currentCached = localStorage.getItem("quick_presets");
+    const newCachedStr = JSON.stringify(calculatedPresets);
+    if (currentCached !== newCachedStr) {
+      localStorage.setItem("quick_presets", newCachedStr);
+      setQuickPresets(calculatedPresets);
+    }
+  }, [tasks]);
+
   // 반복 일정 관련 상태
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrenceType, setRecurrenceType] = useState<"DAILY" | "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "CUSTOM">("DAILY");
@@ -1290,19 +1377,14 @@ export default function DailyView({
                 </div>
                 {/* 🌾 농장 전용 퀵 템플릿 원클릭 카드 단추 */}
                 <div className="flex flex-wrap gap-1.5 pt-1">
-                  {[
-                    { label: "💧 물주기", value: "과수원 물주기" },
-                    { label: "🧪 영양제", value: "영양제 및 비료 살포" },
-                    { label: "🚜 로터리", value: "밭 로터리 작업" },
-                    { label: "📦 수확", value: "농작물 수확 및 포장" },
-                    { label: "🧹 정리", value: "비닐하우스 정리정돈" }
-                  ].map((temp) => (
+                  {quickPresets.map((temp) => (
                     <button
                       key={temp.value}
                       type="button"
                       onClick={() => {
                         setNewTitle(temp.value);
-                        triggerToast(`"${temp.label.split(" ")[1]}" 일정을 퀵 등록칸에 입력했습니다!`);
+                        const labelText = temp.label.includes(" ") ? temp.label.split(" ")[1] : temp.label;
+                        triggerToast(`"${labelText}" 일정을 퀵 등록칸에 입력했습니다!`);
                       }}
                       className="px-2.5 py-1 text-[10px] font-bold rounded-lg bg-green-500/10 border border-green-500/10 text-green-700 hover:bg-green-500/20 active:scale-95 transition-all"
                     >
