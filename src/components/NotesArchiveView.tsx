@@ -68,7 +68,7 @@ export default function NotesArchiveView({ tasks }: NotesArchiveViewProps) {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="개선 사항 키워드 또는 일정 이름으로 검색..."
-            className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl pl-11 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-400/20 focus:border-green-500 transition-all font-medium"
+            className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl pl-11 pr-4 py-3 text-sm text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-green-400/20 focus:border-green-500 transition-all font-medium"
           />
         </div>
 
@@ -84,7 +84,7 @@ export default function NotesArchiveView({ tasks }: NotesArchiveViewProps) {
                 className={`text-xs px-3 py-1.5 rounded-lg border font-bold transition-all ${
                   selectedTag === null
                     ? "bg-green-600 border-green-600 text-white shadow-sm"
-                    : "bg-[var(--input-bg)] border-[var(--card-border)] text-gray-400 hover:bg-[var(--card-bg)]"
+                    : "bg-[var(--input-bg)] border-[var(--card-border)] text-gray-600 dark:text-gray-400 hover:border-orange-500/30"
                 }`}
               >
                 전체보기 ({feedbackJobs.length})
@@ -96,7 +96,7 @@ export default function NotesArchiveView({ tasks }: NotesArchiveViewProps) {
                   className={`text-xs px-3 py-1.5 rounded-lg border font-bold transition-all ${
                     selectedTag === tag
                       ? "bg-orange-500 border-orange-500 text-white shadow-sm"
-                      : "bg-[var(--input-bg)] border-[var(--card-border)] text-gray-500 hover:border-orange-500/30"
+                      : "bg-[var(--input-bg)] border-[var(--card-border)] text-gray-600 dark:text-gray-400 hover:border-orange-500/30"
                   }`}
                 >
                   #{tag} ({tagCounts[tag]})
@@ -146,7 +146,7 @@ export default function NotesArchiveView({ tasks }: NotesArchiveViewProps) {
               </div>
 
               {/* Note Content */}
-              <div className="bg-white dark:bg-zinc-900 border border-amber-500/5 rounded-2xl p-4 text-xs text-gray-600 dark:text-zinc-300 leading-relaxed shadow-inner">
+              <div className="bg-white dark:bg-zinc-900 border border-amber-500/5 rounded-2xl p-4 text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed shadow-inner">
                 {job.feedback}
               </div>
 
