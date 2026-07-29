@@ -16,7 +16,7 @@ import {
   limit
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { Job, UserSettings } from "@/types";
+import { Job, UserSettings, DailyWeather } from "@/types";
 
 export class FirestoreRepository {
   private get jobsCol() {
@@ -32,6 +32,23 @@ export class FirestoreRepository {
   private get notificationsCol() {
     if (!db) throw new Error("Firebase가 초기화되지 않았습니다.");
     return collection(db, "notifications");
+  }
+
+  private get dailyWeatherCol() {
+    if (!db) throw new Error("Firebase가 초기화되지 않았습니다.");
+    return collection(db, "daily_weather");
+  }
+
+  // --- Daily Weather (매일 새벽 Cron이 기록하는 날짜별 공용 날씨) ---
+
+  subscribeDailyWeather(callback: (weatherByDate: Record<string, DailyWeather>) => void): () => void {
+    return onSnapshot(this.dailyWeatherCol, (snapshot) => {
+      const map: Record<string, DailyWeather> = {};
+      snapshot.docs.forEach(d => {
+        map[d.id] = d.data() as DailyWeather;
+      });
+      callback(map);
+    });
   }
 
   // --- Notifications ---

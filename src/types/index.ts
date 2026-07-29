@@ -57,3 +57,16 @@ export interface UserSettings {
   permissions: UserPermissions; // 세부 권한
   updated_at: number;   // 마지막 수정 시간
 }
+
+/**
+ * 날짜별 공용 날씨 캐시 타입 (매일 새벽 Cron이 기상청 API로 채워넣음)
+ */
+export interface DailyWeather {
+  date: string;         // YYYY-MM-DD
+  weather: string;      // 맑음/흐림/비/바람/눈
+  temp_max: number;     // 최고 기온
+  temp_min: number;     // 최저 기온
+  raw_sky: string;      // 기상청 SKY 코드 (원본)
+  raw_pty: string;      // 기상청 PTY 코드 (원본)
+  fetched_at: number;   // 조회 시각 (timestamp)
+}

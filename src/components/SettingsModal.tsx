@@ -6,6 +6,7 @@ import { UserSettings } from "@/types";
 import { adminService } from "@/services/adminService";
 import { useApp } from "@/providers/AppProvider";
 import { firestoreRepo } from "@/repo/firestoreRepository";
+import ConfirmModal from "@/components/ConfirmModal";
 
 interface FarmInfo {
   name: string;
@@ -34,6 +35,8 @@ export default function SettingsModal({ isOpen, onClose, farmInfo: initialInfo, 
   const [allUsers, setAllUsers] = useState<UserSettings[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [processingUid, setProcessingUid] = useState<string | null>(null);
+  const [pendingRemoveUid, setPendingRemoveUid] = useState<string | null>(null);
+  const [pendingRoleChange, setPendingRoleChange] = useState<{ uid: string; userName: string; nextRole: 'admin' | 'user' } | null>(null);
 
   // 🚀 스마트폰의 내장 GPS 센서와 연동하여 현장에서 위경도 자동 연동
   const fetchCurrentGPS = () => {
@@ -110,8 +113,14 @@ export default function SettingsModal({ isOpen, onClose, farmInfo: initialInfo, 
     }
   };
 
-  const handleRemoveUser = async (uid: string) => {
-    if (!confirm("이 사용자를 정말 삭제하시겠습니까? 설정 데이터가 모두 삭제됩니다.")) return;
+  const handleRemoveUser = (uid: string) => {
+    setPendingRemoveUid(uid);
+  };
+
+  const executeRemoveUser = async () => {
+    const uid = pendingRemoveUid;
+    if (!uid) return;
+    setPendingRemoveUid(null);
     setProcessingUid(uid);
     try {
       await adminService.removeUser(uid);
@@ -122,6 +131,17 @@ export default function SettingsModal({ isOpen, onClose, farmInfo: initialInfo, 
     } finally {
       setProcessingUid(null);
     }
+  };
+
+  const handleRoleToggleClick = (u: UserSettings) => {
+    setPendingRoleChange({ uid: u.user_id, userName: u.user_name, nextRole: u.role === 'admin' ? 'user' : 'admin' });
+  };
+
+  const executeRoleChange = async () => {
+    if (!pendingRoleChange) return;
+    const { uid, nextRole } = pendingRoleChange;
+    setPendingRoleChange(null);
+    await handleUpdateUser(uid, { role: nextRole });
   };
 
   if (!isOpen || !initialInfo) return null;
@@ -354,7 +374,7 @@ export default function SettingsModal({ isOpen, onClose, farmInfo: initialInfo, 
                         </div>
                         <div className="flex gap-2">
                           <button
-                            onClick={() => handleUpdateUser(u.user_id, { role: u.role === 'admin' ? 'user' : 'admin' })}
+                            onClick={() => handleRoleToggleClick(u)}
                             disabled={processingUid === u.user_id}
                             className={`p-2 rounded-xl transition-all ${u.role === 'admin'
                               ? 'bg-orange-500 text-white shadow-lg'
@@ -428,6 +448,32 @@ export default function SettingsModal({ isOpen, onClose, farmInfo: initialInfo, 
           )}
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={!!pendingRemoveUid}
+        title="사용자 삭제"
+        message="이 사용자를 정말 삭제하시겠습니까? 설정 데이터가 모두 삭제되며 복구할 수 없습니다."
+        confirmText="삭제하기"
+        cancelText="취소"
+        onConfirm={executeRemoveUser}
+        onCancel={() => setPendingRemoveUid(null)}
+      />
+
+      <ConfirmModal
+        isOpen={!!pendingRoleChange}
+        title={pendingRoleChange?.nextRole === 'admin' ? "관리자로 임명" : "관리자 권한 해제"}
+        message={
+          pendingRoleChange
+            ? pendingRoleChange.nextRole === 'admin'
+              ? `${pendingRoleChange.userName}님을 관리자로 임명하시겠습니까? 모든 데이터에 대한 전체 권한이 부여됩니다.`
+              : `${pendingRoleChange.userName}님의 관리자 권한을 해제하시겠습니까?`
+            : ""
+        }
+        confirmText="확인"
+        cancelText="취소"
+        onConfirm={executeRoleChange}
+        onCancel={() => setPendingRoleChange(null)}
+      />
     </div>
   );
 }

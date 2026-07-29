@@ -52,3 +52,9 @@ firebase_비공개_키/
 !tsconfig.json
 !next.config.json
 !package-lock.json
+!vercel.json
+
+.vercel
+.env*
+
+.env*

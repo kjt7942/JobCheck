@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths } from "date-fns";
 import { ko } from "date-fns/locale";
 import { Job } from "@/types";
@@ -6,6 +6,7 @@ import { Plus, Check, Trash2, Clock, Calendar as CalendarIcon, CheckCircle2, Che
 import DatePicker, { registerLocale } from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { compressImage } from "@/utils/imageUtils";
+import { useApp } from "@/providers/AppProvider";
 
 registerLocale("ko", ko);
 
@@ -76,6 +77,7 @@ export default function MonthlyView({
   canWrite?: boolean;
   canDelete?: boolean;
 }) {
+  const { settings, dailyWeather } = useApp();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedImageInfo, setSelectedImageInfo] = useState<{ urls: string[], index: number } | null>(null);
@@ -92,6 +94,12 @@ export default function MonthlyView({
   const [editExistingUrls, setEditExistingUrls] = useState<string[]>([]);
   const [editFeedback, setEditFeedback] = useState("");
   const [editFeedbackTags, setEditFeedbackTags] = useState("");
+
+  // 🔄 반복 일정 수정 옵션 모달 및 펜딩 작업 상태
+  const [showRecurrenceUpdateModal, setShowRecurrenceUpdateModal] = useState(false);
+  const [pendingUpdateId, setPendingUpdateId] = useState<string | null>(null);
+  const [pendingUpdates, setPendingUpdates] = useState<Partial<Job> | null>(null);
+  const [pendingNewImageFiles, setPendingNewImageFiles] = useState<File[] | undefined>(undefined);
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -142,6 +150,12 @@ export default function MonthlyView({
     setEditFeedbackTags("");
   };
 
+  // 가상 일정 id("마스터ID.YYYY-MM-DD")에서 인스턴스 날짜를 로컬 타임존 기준으로 안전하게 파싱
+  const parseInstanceDate = (instDate: string, hours: number, minutes: number) => {
+    const [y, m, d] = instDate.split('-').map(Number);
+    return new Date(y, m - 1, d, hours, minutes);
+  };
+
   const handleSaveEdit = (id: string) => {
     if (!editTitle.trim() || !editDate) return;
     const updates = {
@@ -157,10 +171,20 @@ export default function MonthlyView({
         : []
     };
 
-    onUpdate(id, updates, editImageFiles);
-    setEditingId(null);
+    if (id.includes('.')) {
+      // 가상 일정 수정을 저장할 때는 팝업을 먼저 오픈해 사용자 선택을 유도함
+      setPendingUpdateId(id);
+      setPendingUpdates(updates);
+      setPendingNewImageFiles(editImageFiles);
+      setShowRecurrenceUpdateModal(true);
+    } else {
+      // 일반 단발성 일정일 때는 아무런 대화상자 없이 바로 진행
+      handleUpdateClick(id, updates, editImageFiles);
+      setEditingId(null);
+    }
   };
 
+  // 🚀 CRUD 가로채기(Interceptor) 함수들 (가상 일정을 실제 인스턴스 문서로 변환)
   const handleToggleClick = (id: string, is_done: boolean) => {
     if (id.includes('.')) {
       // 1. 가상 일정의 토글 -> 실제 변경 인스턴스 문서를 DB에 신규 작성
@@ -168,12 +192,14 @@ export default function MonthlyView({
       const masterTask = tasks.find(t => t.id === masterId);
       if (masterTask) {
         const masterStartDate = new Date(masterTask.date);
+        // 그날의 자동 수집된 날씨 캐시가 있으면 마스터의 정적 기본값 대신 사용 (매일 수동 업데이트 불필요)
+        const cachedWeather = dailyWeather[instDate];
         onAdd(
           masterTask.task,
-          new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), masterStartDate.getHours(), masterStartDate.getMinutes()).toISOString(),
-          masterTask.weather || "",
-          masterTask.temp_max,
-          masterTask.temp_min,
+          parseInstanceDate(instDate, masterStartDate.getHours(), masterStartDate.getMinutes()).toISOString(),
+          cachedWeather?.weather ?? masterTask.weather ?? "",
+          cachedWeather?.temp_max ?? masterTask.temp_max,
+          cachedWeather?.temp_min ?? masterTask.temp_min,
           masterTask.group_id,
           undefined, // 이미지 파일 없음
           undefined, // recurrence 없음
@@ -187,6 +213,131 @@ export default function MonthlyView({
       // 2. 일반 일정 토글
       onToggle(id, is_done);
     }
+  };
+
+  const handleDeleteClick = (id: string) => {
+    if (id.includes('.')) {
+      // 1. 가상 일정의 단일 삭제 -> is_cancelled = true 인 인스턴스를 하나 DB에 씀
+      const [masterId, instDate] = id.split('.');
+      const masterTask = tasks.find(t => t.id === masterId);
+      if (masterTask) {
+        const masterStartDate = new Date(masterTask.date);
+        onAdd(
+          masterTask.task,
+          parseInstanceDate(instDate, masterStartDate.getHours(), masterStartDate.getMinutes()).toISOString(),
+          masterTask.weather || "",
+          masterTask.temp_max,
+          masterTask.temp_min,
+          masterTask.group_id,
+          undefined,
+          undefined,
+          false,
+          instDate,
+          true // is_cancelled = true
+        );
+      }
+    } else {
+      // 2. 일반 일정 삭제
+      onDelete(id);
+    }
+  };
+
+  const handleUpdateClick = (id: string, updates: Partial<Job>, newImageFiles?: File[]) => {
+    if (id.includes('.')) {
+      // 1. 가상 일정의 정보 수정 -> 수정된 값을 기반으로 신규 인스턴스 작성
+      const [masterId, instDate] = id.split('.');
+      const masterTask = tasks.find(t => t.id === masterId);
+      if (masterTask) {
+        const masterStartDate = new Date(masterTask.date);
+        onAdd(
+          updates.task || masterTask.task,
+          updates.date || parseInstanceDate(instDate, masterStartDate.getHours(), masterStartDate.getMinutes()).toISOString(),
+          updates.weather !== undefined ? updates.weather : masterTask.weather,
+          updates.temp_max !== undefined ? Number(updates.temp_max) : masterTask.temp_max,
+          updates.temp_min !== undefined ? Number(updates.temp_min) : masterTask.temp_min,
+          masterTask.group_id,
+          newImageFiles,
+          undefined,
+          true, // is_instance = true
+          instDate,
+          false // is_cancelled = false
+        );
+      }
+    } else {
+      // 2. 일반 일정 수정
+      onUpdate(id, updates, newImageFiles);
+    }
+  };
+
+  const handleRecurrenceUpdateOption = (option: "single" | "all" | "following") => {
+    if (!pendingUpdateId || !pendingUpdates) return;
+
+    const [masterId, instDate] = pendingUpdateId.split('.');
+    const masterTask = tasks.find(t => t.id === masterId);
+
+    if (!masterTask) return;
+
+    if (option === "single") {
+      // 1. 이 일정만 수정
+      handleUpdateClick(pendingUpdateId, pendingUpdates, pendingNewImageFiles);
+    } else if (option === "all") {
+      // 2. 전체 반복 일정(마스터) 수정
+      const originalMasterDate = new Date(masterTask.date);
+
+      if (pendingUpdates.date) {
+        const editDateTime = new Date(pendingUpdates.date);
+        originalMasterDate.setHours(editDateTime.getHours());
+        originalMasterDate.setMinutes(editDateTime.getMinutes());
+      }
+
+      const masterUpdates = {
+        ...pendingUpdates,
+        date: originalMasterDate.toISOString()
+      };
+
+      onUpdate(masterId, masterUpdates, pendingNewImageFiles);
+    } else if (option === "following") {
+      // 3. 이 일정과 이후 일정 일괄 수정
+      // 3-1. 기존 마스터의 종료일을 이 인스턴스 직전일(어제)로 단축하여 마스터 자르기
+      const targetDate = parseInstanceDate(instDate, 0, 0);
+      const yesterday = new Date(targetDate.getTime() - 24 * 60 * 60 * 1000);
+
+      const prevRecurrence = {
+        type: masterTask.recurrence!.type,
+        interval: masterTask.recurrence!.interval || 1,
+        end_date: yesterday.toISOString()
+      };
+
+      // 기존 마스터 일정의 반복 범위를 과거로 잘라서 업데이트
+      onUpdate(masterId, { recurrence: prevRecurrence });
+
+      // 3-2. 이 인스턴스 날짜부터 기존 종료일까지의 신규 마스터 일정을 추가 발행
+      const newGroupId = `rec_${Date.now()}`;
+      const newRecurrence = {
+        type: masterTask.recurrence!.type,
+        interval: masterTask.recurrence!.interval || 1,
+        end_date: masterTask.recurrence!.end_date // 원래 기존 마스터의 종료일까지 유지
+      };
+
+      const masterStartDate = new Date(masterTask.date);
+      onAdd(
+        pendingUpdates.task || masterTask.task,
+        pendingUpdates.date || parseInstanceDate(instDate, masterStartDate.getHours(), masterStartDate.getMinutes()).toISOString(),
+        pendingUpdates.weather !== undefined ? pendingUpdates.weather : masterTask.weather,
+        pendingUpdates.temp_max !== undefined ? Number(pendingUpdates.temp_max) : masterTask.temp_max,
+        pendingUpdates.temp_min !== undefined ? Number(pendingUpdates.temp_min) : masterTask.temp_min,
+        newGroupId,
+        pendingNewImageFiles,
+        newRecurrence
+      );
+    }
+
+    // 펜딩 리셋 및 닫기
+    setPendingUpdateId(null);
+    setPendingUpdates(null);
+    setPendingNewImageFiles(undefined);
+    setShowRecurrenceUpdateModal(false);
+    setEditingId(null);
   };
 
   const weatherOptions = [
@@ -314,23 +465,29 @@ export default function MonthlyView({
   }, [selectedImageInfo]);
 
   // 🚀 월간 달력용 실시간 가상 일정 복원 렌더링 엔진 (오버라이드, 취소 필터링 완벽 적용)
-  const getTasksForDate = (targetDate: Date) => {
-    const list: Job[] = [];
-    const instancesByGroupDate = new Map<string, Job>();
-    const cancelledByGroupDate = new Set<string>();
-
-    // 1. 실제 인스턴스 및 취소 처리된 건들을 사전 분류하여 Map/Set에 저장
+  // 인스턴스/취소 인덱스는 tasks가 바뀔 때만 재계산 (달력 셀마다 매번 재구성하지 않도록 메모이제이션)
+  const instancesByGroupDate = useMemo(() => {
+    const map = new Map<string, Job>();
     tasks.forEach(t => {
       if (t.is_instance && t.instance_date) {
-        const key = `${t.group_id}_${t.instance_date}`;
-        instancesByGroupDate.set(key, t);
-      }
-      if (t.is_cancelled && t.instance_date) {
-        const key = `${t.group_id}_${t.instance_date}`;
-        cancelledByGroupDate.add(key);
+        map.set(`${t.group_id}_${t.instance_date}`, t);
       }
     });
+    return map;
+  }, [tasks]);
 
+  const cancelledByGroupDate = useMemo(() => {
+    const set = new Set<string>();
+    tasks.forEach(t => {
+      if (t.is_cancelled && t.instance_date) {
+        set.add(`${t.group_id}_${t.instance_date}`);
+      }
+    });
+    return set;
+  }, [tasks]);
+
+  const getTasksForDate = (targetDate: Date) => {
+    const list: Job[] = [];
     const targetDateStr = format(targetDate, "yyyy-MM-dd");
 
     // 2. 전체 DB 데이터를 순회하며 오늘 보여줄 일정 계산
@@ -407,11 +564,16 @@ export default function MonthlyView({
 
       if (shouldRender) {
         // 가상 일정 렌더링용 객체 조립 (가상 ID 생성)
+        // 그날의 자동 수집된 날씨 캐시가 있으면 마스터의 정적 기본값 대신 사용 (매일 수동 업데이트 불필요)
+        const cachedWeather = dailyWeather[targetDateStr];
         list.push({
           ...t,
           id: `${t.id}.${targetDateStr}`, // virtual id
           date: new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), masterStartDate.getHours(), masterStartDate.getMinutes()).toISOString(),
-          instance_date: targetDateStr
+          instance_date: targetDateStr,
+          weather: cachedWeather?.weather ?? t.weather,
+          temp_max: cachedWeather?.temp_max ?? t.temp_max,
+          temp_min: cachedWeather?.temp_min ?? t.temp_min
         });
       }
     });
@@ -427,6 +589,16 @@ export default function MonthlyView({
 
   const calendarDays = eachDayOfInterval({ start: startDate, end: endDate });
 
+  // 달력에 보이는 날짜들의 일정을 한 번에 계산해 캐싱 (달력 셀마다 재계산되지 않도록)
+  const tasksByDateMap = useMemo(() => {
+    const map = new Map<string, Job[]>();
+    calendarDays.forEach(day => {
+      map.set(format(day, "yyyy-MM-dd"), getTasksForDate(day));
+    });
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calendarDays.length, currentDate, instancesByGroupDate, cancelledByGroupDate, tasks, dailyWeather]);
+
   const prevMonth = () => setCurrentDate(subMonths(currentDate, 1));
   const nextMonth = () => setCurrentDate(addMonths(currentDate, 1));
 
@@ -436,7 +608,8 @@ export default function MonthlyView({
     ...baseWeekDays.slice(0, startDay)
   ];
 
-  const selectedDayTasks = getTasksForDate(selectedDate);
+  // 선택된 날짜가 현재 달력 범위 안에 있으면 캐시를 재사용하고, 범위 밖(다른 달)이면 직접 계산
+  const selectedDayTasks = tasksByDateMap.get(format(selectedDate, "yyyy-MM-dd")) ?? getTasksForDate(selectedDate);
 
   // 🔮 조회일이 오늘보다 미래인지 여부 판정 (미래 일정 기후 정보 노출 차단용)
   const isSelectedDateFuture = (() => {
@@ -503,7 +676,7 @@ export default function MonthlyView({
         {/* Days */}
         <div className="grid grid-cols-7">
           {calendarDays.map((day, idx) => {
-            const dayTasks = getTasksForDate(day);
+            const dayTasks = tasksByDateMap.get(format(day, "yyyy-MM-dd")) ?? [];
             const isCurrentMonth = isSameMonth(day, monthStart);
             const isToday = isSameDay(day, new Date());
             const isSelected = isSameDay(day, selectedDate);
@@ -567,20 +740,19 @@ export default function MonthlyView({
 
                 <div className="hidden md:block space-y-1">
                     {dayTasks.slice(0, 3).map((task) => {
-                      const isVirtual = task.id!.includes('.');
                       return (
                         <div
                           key={task.id}
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (canWrite && !isVirtual) {
+                            if (canWrite) {
                               startEdit(task);
                             }
                           }}
                           className={`text-[10px] px-1.5 py-0.5 rounded-md truncate border ${task.is_done
                             ? "bg-[var(--input-bg)] border-[var(--card-border)] text-gray-400 line-through opacity-50"
                             : "bg-[var(--card-bg)] border-green-500/20 text-green-600 shadow-sm"
-                            } ${canWrite && !isVirtual ? "cursor-pointer hover:bg-green-500/10 transition-colors" : ""}`}
+                            } ${canWrite ? "cursor-pointer hover:bg-green-500/10 transition-colors" : ""}`}
                       >
                         <div className="flex items-center justify-between gap-1 overflow-hidden">
                           <span className="truncate">{task.task}</span>
@@ -736,7 +908,7 @@ export default function MonthlyView({
                 )}
                 {/* 모바일 액션 단추 (수정/삭제) */}
                 <div className="flex items-center gap-1 shrink-0 ml-1">
-                  {canWrite && !task.id!.includes('.') && (
+                  {canWrite && (
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); startEdit(task); }}
@@ -746,10 +918,10 @@ export default function MonthlyView({
                       <Edit2 className="w-4 h-4" />
                     </button>
                   )}
-                  {canDelete && !task.id!.includes('.') && (
+                  {canDelete && (
                     <button
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); onDelete(task.id!); }}
+                      onClick={(e) => { e.stopPropagation(); handleDeleteClick(task.id!); }}
                       className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all active:scale-90"
                       title="삭제"
                     >
@@ -909,169 +1081,35 @@ export default function MonthlyView({
                   <button
                     type="button"
                     onClick={async () => {
-                      // 🚀 스마트 농장 실시간 날씨 네이버 검색 파싱 연동 엔진
-                      const rawAddress = farmInfo?.region || "문경시 산양면";
-                      const farmName = farmInfo?.name || "꿀송이농장";
+                      // 🚀 기상청 공식 단기예보 API 연동
+                      const lat = settings?.latitude ?? 36.3504;
+                      const lng = settings?.longitude ?? 127.3845;
 
-                      // 읍/면/동/리/가 단위까지만 주소를 잘라서 네이버 날씨 검색 카드가 무조건 나오도록 가공
-                      const cleanAddressForWeather = (addr: string): string => {
-                        if (!addr) return "문경시 산양면";
-                        const tokens = addr.split(/\s+/);
-                        const cleanTokens: string[] = [];
-                        for (const token of tokens) {
-                          cleanTokens.push(token);
-                          if (
-                            token.endsWith("읍") ||
-                            token.endsWith("면") ||
-                            token.endsWith("동") ||
-                            token.endsWith("리") ||
-                            token.endsWith("가")
-                          ) {
-                            break;
-                          }
-                        }
-                        return cleanTokens.join(" ");
-                      };
-
-                      const farmAddress = cleanAddressForWeather(rawAddress);
                       let apiSuccess = false;
                       let autoTempMax = 30;
                       let autoTempMin = 12;
                       let autoWeather = "맑음";
 
-                      // 1단계: 브라우저(클라이언트) 직접 CORS 프록시 우회 fetch 시도
                       try {
-                        console.log(`[클라이언트 날씨 크롤링 시도] 주소: ${farmAddress} (원본: ${rawAddress})`);
-                        const query = encodeURIComponent(`${farmAddress} 날씨`);
-                        const naverUrl = `https://search.naver.com/search.naver?query=${query}`;
-                        const clientFetchUrl = `https://corsproxy.io/?${encodeURIComponent(naverUrl)}`;
+                        const apiUrl = `/api/weather?lat=${lat}&lng=${lng}`;
 
                         const controller = new AbortController();
-                        const id = setTimeout(() => controller.abort(), 4000); // 4초 타임아웃
-                        const response = await fetch(clientFetchUrl, { signal: controller.signal });
+                        const id = setTimeout(() => controller.abort(), 4500); // 4.5초 타임아웃
+
+                        const response = await fetch(apiUrl, { signal: controller.signal });
                         clearTimeout(id);
 
                         if (response.ok) {
-                          const html = await response.text();
-                          
-                          // 최고/최저 기온 정밀 매칭
-                          let tempMaxVal: number | null = null;
-                          let tempMinVal: number | null = null;
-                          let weatherState: string | null = null;
-
-                          // 🌟 [최우선 순위] 주간 예보 (weekly_forecast_area) 내의 "오늘" 영역 파싱
-                          const weeklyForecastIndex = html.indexOf('weekly_forecast_area');
-                          let weeklyTodayParsed = false;
-
-                          if (weeklyForecastIndex !== -1) {
-                            const weeklyHtml = html.substring(weeklyForecastIndex, weeklyForecastIndex + 10000);
-                            const todayMatch = weeklyHtml.match(/<li class="week_item\s+today">([\s\S]*?)<\/li>/);
-                            
-                            if (todayMatch) {
-                              const todayHtml = todayMatch[1];
-                              const lowMatch = todayHtml.match(/class="lowest"[\s\S]*?(-?\d+)°/);
-                              const highMatch = todayHtml.match(/class="highest"[\s\S]*?(-?\d+)°/);
-                              
-                              // 오늘 오전 날씨 파싱
-                              let morningWeather: string | null = null;
-                              const cellWeatherMatch = todayHtml.match(/<div class="cell_weather">([\s\S]*?)<\/div>/);
-                              if (cellWeatherMatch) {
-                                const cellWeatherHtml = cellWeatherMatch[1];
-                                const blindMatch = cellWeatherHtml.match(/<span class="blind">([^<]+)<\/span>/);
-                                if (blindMatch) {
-                                  morningWeather = blindMatch[1].trim();
-                                }
-                              }
-                              
-                              if (lowMatch && highMatch && morningWeather) {
-                                tempMinVal = parseInt(lowMatch[1], 10);
-                                tempMaxVal = parseInt(highMatch[1], 10);
-                                weatherState = morningWeather;
-                                weeklyTodayParsed = true;
-                              }
-                            }
-                          }
-
-                          if (!weeklyTodayParsed) {
-                            const highestMatch = html.match(/최고기온\s*(-?\d+)°/);
-                            const highestMatch2 = html.match(/최고\s*기온\s*(-?\d+)°/);
-                            const desktopHigh = html.match(/class="[^"]*high[^"]*"[^>]*>(-?\d+)°/);
-                            const desktopHigh2 = html.match(/(-?\d+)°<span class="blind">최고기온<\/span>/);
-                            const weeklyHigh = html.match(/<span class="highest">[\s\S]*?(-?\d+)°/);
-                            const temperatureHigh = html.match(/temperature_text[\s\S]*?highest[\s\S]*?(-?\d+)°/);
-
-                            if (highestMatch && highestMatch[1]) tempMaxVal = parseInt(highestMatch[1], 10);
-                            else if (highestMatch2 && highestMatch2[1]) tempMaxVal = parseInt(highestMatch2[1], 10);
-                            else if (desktopHigh2 && desktopHigh2[1]) tempMaxVal = parseInt(desktopHigh2[1], 10);
-                            else if (desktopHigh && desktopHigh[1]) tempMaxVal = parseInt(desktopHigh[1], 10);
-                            else if (weeklyHigh && weeklyHigh[1]) tempMaxVal = parseInt(weeklyHigh[1], 10);
-                            else if (temperatureHigh && temperatureHigh[1]) tempMaxVal = parseInt(temperatureHigh[1], 10);
-
-                            const lowestMatch = html.match(/최저기온\s*(-?\d+)°/);
-                            const lowestMatch2 = html.match(/최저\s*기온\s*(-?\d+)°/);
-                            const desktopLow = html.match(/class="[^"]*low[^"]*"[^>]*>(-?\d+)°/);
-                            const desktopLow2 = html.match(/(-?\d+)°<span class="blind">최저기온<\/span>/);
-                            const weeklyLow = html.match(/<span class="lowest">[\s\S]*?(-?\d+)°/);
-                            const temperatureLow = html.match(/temperature_text[\s\S]*?lowest[\s\S]*?(-?\d+)°/);
-
-                            if (lowestMatch && lowestMatch[1]) tempMinVal = parseInt(lowestMatch[1], 10);
-                            else if (lowestMatch2 && lowestMatch2[1]) tempMinVal = parseInt(lowestMatch2[1], 10);
-                            else if (desktopLow2 && desktopLow2[1]) tempMinVal = parseInt(desktopLow2[1], 10);
-                            else if (desktopLow && desktopLow[1]) tempMinVal = parseInt(desktopLow[1], 10);
-                            else if (weeklyLow && weeklyLow[1]) tempMinVal = parseInt(weeklyLow[1], 10);
-                            else if (temperatureLow && temperatureLow[1]) tempMinVal = parseInt(temperatureLow[1], 10);
-
-                            const weatherMatch = html.match(/<span class="weather before_slash">([^<]+)<\/span>/);
-                            const weatherMatch2 = html.match(/<span class="weather">([^<]+)<\/span>/);
-                            const weatherMatch3 = html.match(/class="weather"[^>]*>([^<]+)<\/span>/);
-
-                            if (weatherMatch && weatherMatch[1]) weatherState = weatherMatch[1].trim();
-                            else if (weatherMatch2 && weatherMatch2[1]) weatherState = weatherMatch2[1].trim();
-                            else if (weatherMatch3 && weatherMatch3[1]) weatherState = weatherMatch3[1].trim();
-                          }
-
-                          if (tempMaxVal !== null && tempMinVal !== null && weatherState !== null) {
-                            autoTempMax = tempMaxVal;
-                            autoTempMin = tempMinVal;
-                            
-                            let finalWeather = "맑음";
-                            if (weatherState.includes("비") || weatherState.includes("소나기") || weatherState.includes("강수")) finalWeather = "비";
-                            else if (weatherState.includes("눈") || weatherState.includes("진눈깨비")) finalWeather = "눈";
-                            else if (weatherState.includes("흐림") || weatherState.includes("구름많음") || weatherState.includes("안개")) finalWeather = "흐림";
-                            else if (weatherState.includes("바람") || weatherState.includes("태풍") || weatherState.includes("황사")) finalWeather = "바람";
-                            
-                            autoWeather = finalWeather;
+                          const data = await response.json();
+                          if (data.success) {
+                            autoTempMax = data.temp_max;
+                            autoTempMin = data.temp_min;
+                            autoWeather = data.weather;
                             apiSuccess = true;
                           }
                         }
                       } catch (error) {
-                        console.warn("클라이언트 사이드 날씨 우회 시도 실패, 서버 사이드 백업 호출로 이관:", error);
-                      }
-
-                      // 2단계: 클라이언트 직접 연동 실패 시, 기존 서버사이드 백업 API 라우트 호출
-                      if (!apiSuccess) {
-                        try {
-                          console.log(`[서버 백업 API 호출] 주소: ${farmAddress}`);
-                          const apiUrl = `/api/weather?address=${encodeURIComponent(farmAddress)}`;
-
-                          const controller = new AbortController();
-                          const id = setTimeout(() => controller.abort(), 4500); // 4.5초 타임아웃 마진
-
-                          const response = await fetch(apiUrl, { signal: controller.signal });
-                          clearTimeout(id);
-
-                          if (response.ok) {
-                            const data = await response.json();
-                            if (data.success) {
-                              autoTempMax = data.temp_max;
-                              autoTempMin = data.temp_min;
-                              autoWeather = data.weather;
-                              apiSuccess = true;
-                            }
-                          }
-                        } catch (error) {
-                          console.warn("네이버 날씨 서버 백업 API 호출 실패:", error);
-                        }
+                        console.warn("기상청 날씨 API 호출 실패:", error);
                       }
 
                       if (apiSuccess) {
@@ -1079,7 +1117,7 @@ export default function MonthlyView({
                         setEditTmn(String(autoTempMin));
                         setEditWeather(autoWeather);
                       } else {
-                        alert("⚠️ 네이버 날씨 연동에 실패했습니다. 날씨와 기온을 직접 입력해 주세요!");
+                        alert("⚠️ 기상청 날씨 연동에 실패했습니다. 날씨와 기온을 직접 입력해 주세요!");
                       }
                     }}
                     className="flex items-center gap-1 text-[9px] font-black text-blue-600 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-lg hover:bg-blue-500/20 transition-all active:scale-95"
@@ -1231,6 +1269,56 @@ export default function MonthlyView({
                 className="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm font-bold py-3.5 rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-md shadow-green-600/20 active:scale-95"
               >
                 변경사항 저장
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🔄 반복 일정 수정 옵션 선택 모달 */}
+      {showRecurrenceUpdateModal && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-md animate-in fade-in duration-300 px-4"
+          onClick={() => setShowRecurrenceUpdateModal(false)}
+        >
+          <div
+            className="w-full max-w-sm bg-[var(--card-bg)] rounded-[32px] p-6 shadow-2xl border border-[var(--card-border)] flex flex-col space-y-6 animate-in zoom-in-95 duration-200 text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col items-center">
+              <div className="w-12 h-12 bg-green-500/10 rounded-full flex items-center justify-center mb-4 text-green-600">
+                <RefreshCw className="w-6 h-6 animate-spin-slow" />
+              </div>
+              <h4 className="text-md font-extrabold text-[var(--foreground)]">반복 일정 수정 옵션</h4>
+              <p className="text-xs text-gray-400 mt-2 leading-relaxed">
+                이 반복 일정의 변경사항을 어떻게 반영할까요?
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2.5">
+              <button
+                onClick={() => handleRecurrenceUpdateOption("single")}
+                className="w-full bg-green-600 hover:bg-green-700 text-[var(--background)] text-xs font-black py-3.5 rounded-xl transition-all shadow-md shadow-green-600/10 active-scale"
+              >
+                📍 이 일정만 수정
+              </button>
+              <button
+                onClick={() => handleRecurrenceUpdateOption("following")}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-black py-3.5 rounded-xl transition-all shadow-md shadow-blue-600/10 active-scale"
+              >
+                ⏭️ 이 일정과 이후 일정 일괄 수정
+              </button>
+              <button
+                onClick={() => handleRecurrenceUpdateOption("all")}
+                className="w-full bg-[var(--foreground)] text-[var(--background)] hover:opacity-90 text-xs font-black py-3.5 rounded-xl transition-all active-scale"
+              >
+                🔄 전체 반복 일정 일괄 수정
+              </button>
+              <button
+                onClick={() => setShowRecurrenceUpdateModal(false)}
+                className="w-full bg-[var(--input-bg)] text-gray-500 text-xs font-bold py-3.5 rounded-xl hover:bg-gray-200/50 transition-all active-scale"
+              >
+                취소
               </button>
             </div>
           </div>

@@ -56,7 +56,11 @@ export function convertToGrid(lat: number, lng: number) {
  * 기상청 단기예보(VilageFcst) API 호출
  */
 export async function getKmaWeather(lat: number, lng: number, date: string): Promise<WeatherInfo | null> {
-  const authKey = process.env.KMA_AUTH_KEY || "mLx6CrVUQX68egq1VEF-NA";
+  const authKey = process.env.KMA_AUTH_KEY;
+  if (!authKey) {
+    console.error("KMA_AUTH_KEY 환경변수가 설정되지 않았습니다.");
+    return null;
+  }
   const { nx, ny } = convertToGrid(lat, lng);
 
   // base_date: YYYYMMDD
@@ -77,36 +81,70 @@ export async function getKmaWeather(lat: number, lng: number, date: string): Pro
       return null;
     }
 
-    const items = data.response.body.items.item;
-    const info: Partial<WeatherInfo> = {};
+    // 응답에는 요청일 이후 며칠치 예보가 함께 내려오므로, 요청한 날짜(baseDate)의 항목만 사용
+    const items = (data.response.body.items.item as any[]).filter(item => item.fcstDate === baseDate);
 
-    items.forEach((item: any) => {
-      if (item.category === "TMN") info.tmn = item.fcstValue;
-      if (item.category === "TMX") info.tmx = item.fcstValue;
-      if (item.category === "SKY") info.sky = item.fcstValue;
-      if (item.category === "PTY") info.pty = item.fcstValue;
-      if (item.category === "TMP") info.tmp = item.fcstValue;
+    let tmn: string | undefined;
+    let tmx: string | undefined;
+
+    // 시간대별로 묶어서, 정오(12시)에 가장 가까운 시간대를 그날의 대표 하늘상태/강수형태/기온으로 사용
+    const byTime = new Map<string, Record<string, string>>();
+    items.forEach((item) => {
+      if (item.category === "TMN") tmn = item.fcstValue;
+      if (item.category === "TMX") tmx = item.fcstValue;
+      if (!byTime.has(item.fcstTime)) byTime.set(item.fcstTime, {});
+      byTime.get(item.fcstTime)![item.category] = item.fcstValue;
     });
+
+    let representative: Record<string, string> | undefined;
+    let bestDiff = Infinity;
+    for (const [fcstTime, slot] of byTime) {
+      const hour = parseInt(fcstTime.slice(0, 2), 10);
+      const diff = Math.abs(hour - 12);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        representative = slot;
+      }
+    }
+
+    const sky = representative?.SKY || "1";
+    const pty = representative?.PTY || "0";
+    const tmp = representative?.TMP || "-";
 
     // 날씨 아이콘 결정 (기상청 SKY: 1 맑음, 3 구름많음, 4 흐림 / PTY: 1 비, 2 비/눈, 3 눈, 4 소나기)
     let icon = "sun";
-    if (info.pty !== "0") {
-      icon = info.pty === "1" || info.pty === "4" ? "cloud-rain" : "cloud-snow";
+    if (pty !== "0") {
+      icon = pty === "1" || pty === "4" ? "cloud-rain" : "cloud-snow";
     } else {
-      if (info.sky === "3") icon = "cloud-sun";
-      else if (info.sky === "4") icon = "cloud";
+      if (sky === "3") icon = "cloud-sun";
+      else if (sky === "4") icon = "cloud";
     }
 
     return {
-      sky: info.sky || "1",
-      pty: info.pty || "0",
-      tmx: info.tmx || "-",
-      tmn: info.tmn || "-",
-      tmp: info.tmp || "-",
-      icon: icon
+      sky,
+      pty,
+      tmx: tmx || "-",
+      tmn: tmn || "-",
+      tmp,
+      icon
     };
   } catch (error) {
     console.error("Weather Fetch Fail:", error);
     return null;
   }
+}
+
+/**
+ * 기상청 SKY/PTY 코드를 앱에서 쓰는 5가지 날씨 라벨로 변환 ("맑음","흐림","비","바람","눈")
+ */
+export function toWeatherLabel(sky: string, pty: string, wsd?: string): string {
+  if (pty === "1" || pty === "4" || pty === "5") return "비"; // 비, 소나기, 빗방울
+  if (pty === "2" || pty === "3" || pty === "6" || pty === "7") return "눈"; // 비/눈, 눈, 빗방울눈날림, 눈날림
+
+  // 강수가 없는 경우: 강풍이면 "바람", 아니면 하늘상태로 판정
+  const windSpeed = wsd ? parseFloat(wsd) : 0;
+  if (windSpeed >= 8) return "바람"; // 초속 8m 이상(센바람)이면 바람으로 표시
+
+  if (sky === "3" || sky === "4") return "흐림"; // 구름많음, 흐림
+  return "맑음";
 }

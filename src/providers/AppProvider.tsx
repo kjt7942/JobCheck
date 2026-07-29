@@ -3,7 +3,9 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { User } from "firebase/auth";
 import { authService } from "@/services/authService";
-import { UserSettings } from "@/types";
+import { auth, db } from "@/lib/firebase";
+import { firestoreRepo } from "@/repo/firestoreRepository";
+import { UserSettings, DailyWeather } from "@/types";
 
 // --- Types ---
 type ToastType = "success" | "error" | "info";
@@ -23,6 +25,8 @@ interface AppContextType {
   toasts: Toast[];
   showToast: (message: string, type?: ToastType) => void;
   removeToast: (id: string) => void;
+  // Daily Weather (매일 새벽 Cron이 채워넣는 날짜별 공용 날씨)
+  dailyWeather: Record<string, DailyWeather>;
   // Actions
   logout: () => Promise<void>;
   refreshSettings: (uid: string) => Promise<void>;
@@ -37,6 +41,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [dailyWeather, setDailyWeather] = useState<Record<string, DailyWeather>>({});
 
   // Auth Sync with Firebase
   useEffect(() => {
@@ -58,6 +63,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     return () => unsubscribe();
   }, []);
+
+  // 날짜별 공용 날씨 캐시 구독 (로그인 상태에서만)
+  useEffect(() => {
+    if (!user || !db) {
+      setDailyWeather({});
+      return;
+    }
+    const unsubscribe = firestoreRepo.subscribeDailyWeather((map) => {
+      setDailyWeather(map);
+    });
+    return () => unsubscribe();
+  }, [user]);
 
   const logout = async () => {
     try {
@@ -90,7 +107,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // 파이어베이스 설정 누락 시 안내 화면
-  const { auth, db } = require("@/lib/firebase");
   if (!auth || !db) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
@@ -122,6 +138,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     toasts,
     showToast,
     removeToast,
+    dailyWeather,
     logout,
     refreshSettings,
   };
