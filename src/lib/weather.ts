@@ -11,6 +11,15 @@ const OLAT = 38.0; // 기준점 위도(degree)
 const XO = 43; // 기준점 X좌표(GRID)
 const YO = 136; // 기준점 Y좌표(GRID)
 
+/**
+ * 서버(UTC) 환경에서도 한국 표준시(KST) 기준 날짜 문자열(YYYY-MM-DD)을 반환합니다.
+ * new Date().toISOString()은 UTC 기준이라 KST 00~09시(=UTC 15~24시)엔 하루 밀린 날짜가 나옴.
+ */
+export function getKstDateString(d: Date = new Date()): string {
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  return kst.toISOString().slice(0, 10);
+}
+
 export interface WeatherInfo {
   sky: string;    // 하늘상태
   pty: string;    // 강수형태
@@ -55,7 +64,7 @@ export function convertToGrid(lat: number, lng: number) {
 /**
  * 기상청 단기예보(VilageFcst) API 호출
  */
-export async function getKmaWeather(lat: number, lng: number, date: string): Promise<WeatherInfo | null> {
+export async function getKmaWeather(lat: number, lng: number, date: string, targetDate: string = date): Promise<WeatherInfo | null> {
   const authKey = process.env.KMA_AUTH_KEY;
   if (!authKey) {
     console.error("KMA_AUTH_KEY 환경변수가 설정되지 않았습니다.");
@@ -63,11 +72,11 @@ export async function getKmaWeather(lat: number, lng: number, date: string): Pro
   }
   const { nx, ny } = convertToGrid(lat, lng);
 
-  // base_date: YYYYMMDD
+  // base_date: YYYYMMDD (발표 기준일 = 예보를 조회할 때 사용하는 발표 시각의 날짜)
+  // target: 실제로 알고 싶은 날짜 (오늘 or 최대 2~3일 뒤 미래 날짜)
   // 기상청 단기예보는 0200, 0500, 0800, 1100, 1400, 1700, 2000, 2300에 발표
-  // 가장 최근 발표 시각을 계산
-  const now = new Date();
   const baseDate = date.replace(/-/g, '').slice(0, 8);
+  const targetFcstDate = targetDate.replace(/-/g, '').slice(0, 8);
   const baseTime = "0200"; // 고정 발표 시각 (최저/최고 기온 포함용)
 
   const url = `https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0/getVilageFcst?authKey=${authKey}&base_date=${baseDate}&base_time=${baseTime}&nx=${nx}&ny=${ny}&dataType=JSON&numOfRows=1000`;
@@ -81,8 +90,8 @@ export async function getKmaWeather(lat: number, lng: number, date: string): Pro
       return null;
     }
 
-    // 응답에는 요청일 이후 며칠치 예보가 함께 내려오므로, 요청한 날짜(baseDate)의 항목만 사용
-    const items = (data.response.body.items.item as any[]).filter(item => item.fcstDate === baseDate);
+    // 응답에는 발표일 이후 며칠치 예보가 함께 내려오므로, 실제 알고 싶은 날짜(targetFcstDate)의 항목만 사용
+    const items = (data.response.body.items.item as any[]).filter(item => item.fcstDate === targetFcstDate);
 
     let tmn: string | undefined;
     let tmx: string | undefined;

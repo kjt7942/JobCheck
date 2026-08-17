@@ -59,6 +59,34 @@ export interface UserSettings {
 }
 
 /**
+ * 살포(방제) 이력 및 PHI(수확전 안전사용기준일) 계산 기록
+ */
+export interface SprayRecord {
+  id?: string;
+  chemical_name: string; // 약제명
+  spray_date: string;    // 살포일 (YYYY-MM-DD)
+  phi_days: number;      // 안전사용기준일수 (수확 며칠 전까지 살포 금지인지)
+  memo?: string;
+  user_id: string;
+  created_at: number;
+}
+
+/**
+ * 농장 기록부 (투입 비용 / 수확·매출 기록)
+ */
+export interface FarmRecord {
+  id?: string;
+  type: 'cost' | 'harvest';
+  date: string;         // YYYY-MM-DD
+  category?: string;    // cost: 농약/비료/인건비/유류/기타 등, harvest: 품종/구역 등 (자유 입력)
+  amount: number;       // cost: 지출 금액(원), harvest: 수확량(kg)
+  unit_price?: number;  // harvest 전용: 판매 단가(원/kg). 있으면 매출 = amount * unit_price
+  memo?: string;
+  user_id: string;
+  created_at: number;
+}
+
+/**
  * 날짜별 공용 날씨 캐시 타입 (매일 새벽 Cron이 기상청 API로 채워넣음)
  */
 export interface DailyWeather {

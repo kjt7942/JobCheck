@@ -2,12 +2,13 @@
 console.log("Client: JS file evaluation started");
 
 import { useState, useEffect } from "react";
-import { CalendarDays, Calendar, ListTodo, CalendarRange, Sprout, Settings, LogOut, Wrench, StickyNote } from "lucide-react";
+import { CalendarDays, Calendar, ListTodo, CalendarRange, Sprout, Settings, LogOut, Wrench, StickyNote, Wallet } from "lucide-react";
 import DailyView from "@/components/DailyView";
 import MonthlyView from "@/components/MonthlyView";
 import YearlyView from "@/components/YearlyView";
 import ToolsView from "@/components/ToolsView";
 import NotesArchiveView from "@/components/NotesArchiveView";
+import FarmRecordsView from "@/components/FarmRecordsView";
 import SettingsModal from "@/components/SettingsModal";
 import ConfirmModal from "@/components/ConfirmModal";
 import LoginView from "@/components/LoginView";
@@ -17,7 +18,7 @@ import { authService } from "@/services/authService";
 import { firestoreRepo } from "@/repo/firestoreRepository";
 import { Job, UserSettings } from "@/types";
 
-type Tab = "daily" | "monthly" | "yearly" | "tools" | "notes";
+type Tab = "daily" | "monthly" | "yearly" | "tools" | "notes" | "records";
 
 export default function Home() {
   const { user, settings, loading: authLoading, logout, showToast, refreshSettings } = useApp();
@@ -234,6 +235,7 @@ export default function Home() {
     { id: "monthly", label: "월간 달력", icon: CalendarRange },
     { id: "yearly", label: "연간 일정", icon: Calendar },
     { id: "notes", label: "개선 노트", icon: StickyNote },
+    { id: "records", label: "기록부", icon: Wallet },
     { id: "tools", label: "도구", icon: Wrench },
   ];
 
@@ -435,6 +437,10 @@ export default function Home() {
               <NotesArchiveView
                 tasks={tasks}
               />
+            )}
+
+            {activeTab === "records" && (
+              <FarmRecordsView />
             )}
           </div>
         )}

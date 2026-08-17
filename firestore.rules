@@ -74,5 +74,19 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow write: if false;
     }
+
+    // 살포(방제) 이력 / PHI 계산기 기록
+    match /spray_records/{recordId} {
+      allow read: if request.auth != null && (isAdmin() || getUserPermissions().canRead == true);
+      allow create, update: if request.auth != null && (isAdmin() || getUserPermissions().canWrite == true);
+      allow delete: if request.auth != null && (isAdmin() || getUserPermissions().canDelete == true);
+    }
+
+    // 농장 기록부 (비용/수확·매출)
+    match /farm_records/{recordId} {
+      allow read: if request.auth != null && (isAdmin() || getUserPermissions().canRead == true);
+      allow create, update: if request.auth != null && (isAdmin() || getUserPermissions().canWrite == true);
+      allow delete: if request.auth != null && (isAdmin() || getUserPermissions().canDelete == true);
+    }
   }
 }

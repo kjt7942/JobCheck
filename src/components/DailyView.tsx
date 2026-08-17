@@ -9,6 +9,7 @@ import DatePicker, { registerLocale } from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { compressImage } from "@/utils/imageUtils";
 import { useApp } from "@/providers/AppProvider";
+import { useSprayRainWarnings } from "@/lib/sprayWarning";
 
 registerLocale("ko", ko);
 
@@ -144,6 +145,11 @@ export default function DailyView({
   canDelete?: boolean;
 }) {
   const { settings, dailyWeather } = useApp();
+  const sprayRainWarnings = useSprayRainWarnings(
+    tasks,
+    settings?.latitude ?? 36.3504,
+    settings?.longitude ?? 127.3845
+  );
   const [newTitle, setNewTitle] = useState("");
   const [startDate, setStartDate] = useState<Date | null>(new Date());
 
@@ -1096,6 +1102,21 @@ export default function DailyView({
                 <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
                   오늘 비 소식이 예정되어 있는 일정이 있네요! 영양제 살포나 야외 밭갈이 작업은 비에 쓸려가거나 흙이 뭉쳐 효율이 낮아질 수 있으니, 날씨가 개인 뒤로 미루시는 것을 추천드립니다.☔
                 </p>
+              </div>
+            </div>
+          )}
+
+          {/* 🌧️ 방제 예정일 강우 예보 충돌 경고 (향후 2일 이내) */}
+          {sprayRainWarnings.length > 0 && (
+            <div className="mb-4 bg-orange-500/10 border border-orange-500/20 p-4 rounded-2xl flex items-start gap-3 animate-in slide-in-from-top-2 duration-300">
+              <CloudRain className="w-5 h-5 text-orange-500 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <h5 className="text-xs font-bold text-orange-600">⚠️ 방제 예정일 우천 예보</h5>
+                {sprayRainWarnings.map(w => (
+                  <p key={w.id} className="text-[11px] text-gray-500 leading-relaxed">
+                    {format(new Date(w.date), "M월 d일")} &quot;{w.task}&quot; — 예보상 비가 올 것으로 보여요. 방제 일정을 조정하는 것을 추천드립니다.
+                  </p>
+                ))}
               </div>
             </div>
           )}

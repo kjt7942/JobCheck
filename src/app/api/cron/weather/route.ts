@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getKmaWeather, toWeatherLabel } from "@/lib/weather";
+import { getKmaWeather, toWeatherLabel, getKstDateString } from "@/lib/weather";
 import { adminDb } from "@/lib/firebase-admin";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +17,7 @@ export async function GET(request: Request) {
 
   const lat = parseFloat(process.env.FARM_LAT || "36.3504");
   const lng = parseFloat(process.env.FARM_LNG || "127.3845");
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getKstDateString();
 
   try {
     const info = await getKmaWeather(lat, lng, today);

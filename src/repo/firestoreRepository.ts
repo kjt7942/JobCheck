@@ -16,7 +16,7 @@ import {
   limit
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { Job, UserSettings, DailyWeather } from "@/types";
+import { Job, UserSettings, DailyWeather, SprayRecord, FarmRecord } from "@/types";
 
 export class FirestoreRepository {
   private get jobsCol() {
@@ -37,6 +37,16 @@ export class FirestoreRepository {
   private get dailyWeatherCol() {
     if (!db) throw new Error("Firebase가 초기화되지 않았습니다.");
     return collection(db, "daily_weather");
+  }
+
+  private get sprayRecordsCol() {
+    if (!db) throw new Error("Firebase가 초기화되지 않았습니다.");
+    return collection(db, "spray_records");
+  }
+
+  private get farmRecordsCol() {
+    if (!db) throw new Error("Firebase가 초기화되지 않았습니다.");
+    return collection(db, "farm_records");
   }
 
   // --- Daily Weather (매일 새벽 Cron이 기록하는 날짜별 공용 날씨) ---
@@ -240,6 +250,44 @@ export class FirestoreRepository {
   async deleteJob(id: string): Promise<void> {
     const docRef = doc(this.jobsCol, id);
     await deleteDoc(docRef);
+  }
+
+  // --- Spray Records (PHI 계산기 살포 이력) ---
+
+  subscribeSprayRecords(callback: (records: SprayRecord[]) => void): () => void {
+    const q = query(this.sprayRecordsCol, orderBy("spray_date", "desc"));
+    return onSnapshot(q, (snapshot) => {
+      callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as SprayRecord)));
+    });
+  }
+
+  async addSprayRecord(data: Omit<SprayRecord, "id" | "created_at">): Promise<string> {
+    const cleaned = this.cleanUndefined({ ...data, created_at: Date.now() });
+    const docRef = await addDoc(this.sprayRecordsCol, cleaned);
+    return docRef.id;
+  }
+
+  async deleteSprayRecord(id: string): Promise<void> {
+    await deleteDoc(doc(this.sprayRecordsCol, id));
+  }
+
+  // --- Farm Records (비용/수확·매출 기록부) ---
+
+  subscribeFarmRecords(callback: (records: FarmRecord[]) => void): () => void {
+    const q = query(this.farmRecordsCol, orderBy("date", "desc"));
+    return onSnapshot(q, (snapshot) => {
+      callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as FarmRecord)));
+    });
+  }
+
+  async addFarmRecord(data: Omit<FarmRecord, "id" | "created_at">): Promise<string> {
+    const cleaned = this.cleanUndefined({ ...data, created_at: Date.now() });
+    const docRef = await addDoc(this.farmRecordsCol, cleaned);
+    return docRef.id;
+  }
+
+  async deleteFarmRecord(id: string): Promise<void> {
+    await deleteDoc(doc(this.farmRecordsCol, id));
   }
 }
 

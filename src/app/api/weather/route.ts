@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getKmaWeather, toWeatherLabel } from "@/lib/weather";
+import { getKmaWeather, toWeatherLabel, getKstDateString } from "@/lib/weather";
 
 export const dynamic = "force-dynamic";
 
@@ -21,10 +21,12 @@ export async function GET(request: Request) {
     }, { status: 400 });
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getKstDateString();
+  // date 파라미터가 있으면 해당 날짜(최대 2~3일 뒤 미래) 예보를 조회, 없으면 오늘
+  const targetDate = searchParams.get("date") || today;
 
   try {
-    const info = await getKmaWeather(lat, lng, today);
+    const info = await getKmaWeather(lat, lng, today, targetDate);
 
     if (!info || info.tmx === "-" || info.tmn === "-") {
       console.warn(`[기상청 날씨 조회 실패] lat=${lat}, lng=${lng}`);
