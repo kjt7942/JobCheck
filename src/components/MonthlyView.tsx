@@ -101,6 +101,9 @@ export default function MonthlyView({
   const [pendingUpdates, setPendingUpdates] = useState<Partial<Job> | null>(null);
   const [pendingNewImageFiles, setPendingNewImageFiles] = useState<File[] | undefined>(undefined);
 
+  // 🚀 가상 일정 삭제 중복 클릭 방지 (Firestore 왕복 전 즉시 로컬 숨김)
+  const [pendingCancelIds, setPendingCancelIds] = useState<Set<string>>(new Set());
+
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
@@ -217,10 +220,13 @@ export default function MonthlyView({
 
   const handleDeleteClick = (id: string) => {
     if (id.includes('.')) {
+      if (pendingCancelIds.has(id)) return; // 중복 클릭 방지 (Firestore 왕복 대기 중)
+
       // 1. 가상 일정의 단일 삭제 -> is_cancelled = true 인 인스턴스를 하나 DB에 씀
       const [masterId, instDate] = id.split('.');
       const masterTask = tasks.find(t => t.id === masterId);
       if (masterTask) {
+        setPendingCancelIds(prev => new Set(prev).add(id)); // 즉시 로컬 숨김
         const masterStartDate = new Date(masterTask.date);
         onAdd(
           masterTask.task,
@@ -564,11 +570,14 @@ export default function MonthlyView({
 
       if (shouldRender) {
         // 가상 일정 렌더링용 객체 조립 (가상 ID 생성)
+        const virtualId = `${t.id}.${targetDateStr}`;
+        if (pendingCancelIds.has(virtualId)) return; // 삭제 요청 후 Firestore 왕복 전까지 즉시 숨김
+
         // 그날의 자동 수집된 날씨 캐시가 있으면 마스터의 정적 기본값 대신 사용 (매일 수동 업데이트 불필요)
         const cachedWeather = dailyWeather[targetDateStr];
         list.push({
           ...t,
-          id: `${t.id}.${targetDateStr}`, // virtual id
+          id: virtualId, // virtual id
           date: new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), masterStartDate.getHours(), masterStartDate.getMinutes()).toISOString(),
           instance_date: targetDateStr,
           weather: cachedWeather?.weather ?? t.weather,
@@ -597,7 +606,7 @@ export default function MonthlyView({
     });
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calendarDays.length, currentDate, instancesByGroupDate, cancelledByGroupDate, tasks, dailyWeather]);
+  }, [calendarDays.length, currentDate, instancesByGroupDate, cancelledByGroupDate, tasks, dailyWeather, pendingCancelIds]);
 
   const prevMonth = () => setCurrentDate(subMonths(currentDate, 1));
   const nextMonth = () => setCurrentDate(addMonths(currentDate, 1));

@@ -29,7 +29,11 @@ export class JobService {
     async createJob(jobData: Omit<Job, "id" | "created_at">, imageFiles?: File[]): Promise<string> {
         try {
             // 1. 일정 먼저 생성 (ID 확보)
-            const jobId = await firestoreRepo.addJob(jobData);
+            // 반복 일정의 특정 날짜 오버라이드(취소/수정 인스턴스)는 (group_id, instance_date)로
+            // 결정적 ID를 써서, 중복 클릭이나 동시 요청으로 같은 취소/수정 문서가 여러 개 생기지 않게 함.
+            const jobId = (jobData.group_id && jobData.instance_date)
+                ? await firestoreRepo.setJobInstance(`${jobData.group_id}_${jobData.instance_date}`, jobData)
+                : await firestoreRepo.addJob(jobData);
 
             // 2. 이미지가 있으면 업로드 후 업데이트
             if (imageFiles && imageFiles.length > 0) {
@@ -75,7 +79,7 @@ export class JobService {
                 if (updates.image_urls) {
                     baseUrls = updates.image_urls;
                 } else {
-                    const currentJob = (await firestoreRepo.getJobs()).find(j => j.id === id);
+                    const currentJob = await firestoreRepo.getJob(id);
                     baseUrls = currentJob?.image_urls || [];
                 }
                 

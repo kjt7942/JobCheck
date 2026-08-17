@@ -125,6 +125,19 @@ export class FirestoreRepository {
 
   // --- Jobs ---
 
+  async getJob(id: string): Promise<Job | null> {
+    const docRef = doc(this.jobsCol, id);
+    const docSnap = await getDoc(docRef);
+    if (!docSnap.exists()) return null;
+
+    const data = docSnap.data();
+    let jobDate = data.date;
+    if (jobDate instanceof Timestamp) {
+      jobDate = jobDate.toDate().toISOString();
+    }
+    return { id: docSnap.id, ...data, date: jobDate } as Job;
+  }
+
   async getJobs(date?: string): Promise<Job[]> {
     // 모든 유저의 데이터를 공유하므로 user_id 필터 제거
     let q = query(
@@ -202,6 +215,20 @@ export class FirestoreRepository {
     });
     const docRef = await addDoc(this.jobsCol, newJob);
     return docRef.id;
+  }
+
+  /**
+   * 반복 일정의 특정 날짜 오버라이드(취소/수정 인스턴스)를 결정적 ID로 저장합니다.
+   * 같은 (group_id, instance_date) 조합은 항상 같은 문서를 덮어써서,
+   * 동시 삭제/수정 클릭으로 중복 문서가 쌓이는 것을 막습니다.
+   */
+  async setJobInstance(id: string, job: Omit<Job, "id" | "created_at">): Promise<string> {
+    const newJob = this.cleanUndefined({
+      ...job,
+      created_at: Date.now()
+    });
+    await setDoc(doc(this.jobsCol, id), newJob);
+    return id;
   }
 
   async updateJob(id: string, updates: Partial<Job>): Promise<void> {

@@ -1,0 +1,14 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // jobs/{jobId}/... : 일정 첨부 이미지. 로그인한 사용자만 읽기/쓰기/삭제 가능.
+    match /jobs/{jobId}/{fileName} {
+      allow read, write, delete: if request.auth != null;
+    }
+
+    // 그 외 경로는 기본적으로 접근 차단.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
