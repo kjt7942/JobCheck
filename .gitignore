@@ -57,4 +57,5 @@ firebase_비공개_키/
 .vercel
 .env*
 
-.env*
+# 연결정보 모음 (GitHub 업로드 금지)
+PROJECT_CONNECTIONS.md
