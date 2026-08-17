@@ -24,6 +24,7 @@ const GRAPE_STANDARD_STAGES: { monthDay: string; task: string }[] = [
 
 export default function ToolsView() {
   const { user, settings, showToast } = useApp();
+  const canRead = settings?.role === 'admin' || settings?.permissions?.canRead;
   const canWrite = settings?.role === 'admin' || settings?.permissions?.canWrite;
   const canDelete = settings?.role === 'admin' || settings?.permissions?.canDelete;
 
@@ -41,10 +42,10 @@ export default function ToolsView() {
   const [sprayMemo, setSprayMemo] = useState("");
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !canRead) return;
     const unsubscribe = sprayService.subscribeSprayRecords(setSprayRecords);
     return () => unsubscribe();
-  }, [user]);
+  }, [user, canRead]);
 
   const harvestReadyDate = format(addDays(new Date(sprayDate), phiDays || 0), "yyyy-MM-dd");
 
@@ -96,19 +97,24 @@ export default function ToolsView() {
 
     setIsRegisteringPreset(true);
     try {
-      for (const stage of selected) {
-        await jobService.createJob({
+      // Promise.all이 아닌 allSettled: 중간에 하나 실패해도 나머지는 계속 등록 시도
+      const results = await Promise.allSettled(selected.map(stage =>
+        jobService.createJob({
           task: stage.task,
           date: new Date(`${presetYear}-${stage.monthDay}T09:00:00`).toISOString(),
           is_done: false,
           user_id: user!.uid,
           group_id: "",
           weather: "",
-        });
+        })
+      ));
+      const failedCount = results.filter(r => r.status === "rejected").length;
+      const successCount = results.length - failedCount;
+      if (failedCount === 0) {
+        showToast(`표준 작업 일정 ${successCount}건이 등록되었습니다.`);
+      } else {
+        showToast(`${successCount}건 등록 완료, ${failedCount}건 실패했습니다. 실패한 항목은 다시 등록해 주세요.`, "error");
       }
-      showToast(`표준 작업 일정 ${selected.length}건이 등록되었습니다.`);
-    } catch {
-      showToast("일괄 등록 중 일부 실패했습니다.", "error");
     } finally {
       setIsRegisteringPreset(false);
     }

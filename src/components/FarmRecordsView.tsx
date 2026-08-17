@@ -15,6 +15,7 @@ function formatWon(n: number): string {
 
 export default function FarmRecordsView() {
   const { user, settings, showToast } = useApp();
+  const canRead = settings?.role === 'admin' || settings?.permissions?.canRead;
   const canWrite = settings?.role === 'admin' || settings?.permissions?.canWrite;
   const canDelete = settings?.role === 'admin' || settings?.permissions?.canDelete;
 
@@ -29,10 +30,10 @@ export default function FarmRecordsView() {
   const [memo, setMemo] = useState("");
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !canRead) return;
     const unsubscribe = farmRecordService.subscribeFarmRecords(setRecords);
     return () => unsubscribe();
-  }, [user]);
+  }, [user, canRead]);
 
   const handleAdd = async () => {
     if (!canWrite) { showToast("등록 권한이 없습니다.", "error"); return; }
