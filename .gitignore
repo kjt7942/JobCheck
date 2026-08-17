@@ -53,6 +53,7 @@ firebase_비공개_키/
 !next.config.json
 !package-lock.json
 !vercel.json
+!firebase.json
 
 .vercel
 .env*
