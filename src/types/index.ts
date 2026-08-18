@@ -82,6 +82,7 @@ export interface FarmRecord {
   amount: number;       // cost: 지출 금액(원), harvest: 수확량(kg)
   unit_price?: number;  // harvest 전용: 판매 단가(원/kg). 있으면 매출 = amount * unit_price
   memo?: string;
+  image_urls?: string[]; // 영수증/거래명세서 등 첨부 이미지 URL 리스트
   user_id: string;
   created_at: number;
 }

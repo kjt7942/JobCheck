@@ -2,6 +2,38 @@
  * 브라우저 기본 Canvas API를 이용한 이미지 압축 유틸리티
  */
 
+import { storage } from "@/lib/firebase";
+import { ref, uploadBytes, getDownloadURL, deleteObject, listAll } from "firebase/storage";
+
+/**
+ * 압축된 이미지 파일들을 Storage의 지정 폴더에 업로드하고 다운로드 URL 목록을 반환합니다.
+ */
+export const uploadImagesToStorage = async (folderPath: string, files: File[]): Promise<string[]> => {
+  if (!storage) throw new Error("Storage가 초기화되지 않았습니다.");
+
+  const uploadPromises = files.map(async (file, index) => {
+    const fileName = `${Date.now()}_${index}_${file.name}`;
+    const storageRef = ref(storage, `${folderPath}/${fileName}`);
+    const snapshot = await uploadBytes(storageRef, file);
+    return await getDownloadURL(snapshot.ref);
+  });
+
+  return await Promise.all(uploadPromises);
+};
+
+/**
+ * 지정 폴더의 모든 이미지를 Storage에서 삭제합니다.
+ */
+export const deleteFolderImages = async (folderPath: string): Promise<void> => {
+  if (!storage) return;
+  try {
+    const res = await listAll(ref(storage, folderPath));
+    await Promise.all(res.items.map(item => deleteObject(item)));
+  } catch (error) {
+    console.warn(`Storage 이미지 삭제 중 오류 (${folderPath}):`, error);
+  }
+};
+
 export const compressImage = async (file: File, maxSizeMB: number = 1): Promise<File> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();

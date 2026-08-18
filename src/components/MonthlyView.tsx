@@ -95,6 +95,9 @@ export default function MonthlyView({
   const [editFeedback, setEditFeedback] = useState("");
   const [editFeedbackTags, setEditFeedbackTags] = useState("");
 
+  // 🔄 반복 일정 중간 규칙 변경용 (편집 대상이 반복 마스터의 가상 일정일 때만 노출)
+  const [editRecurrence, setEditRecurrence] = useState<Job["recurrence"] | null>(null);
+
   // 🔄 반복 일정 수정 옵션 모달 및 펜딩 작업 상태
   const [showRecurrenceUpdateModal, setShowRecurrenceUpdateModal] = useState(false);
   const [pendingUpdateId, setPendingUpdateId] = useState<string | null>(null);
@@ -137,6 +140,7 @@ export default function MonthlyView({
     setEditExistingUrls(job.image_urls || []);
     setEditFeedback(job.feedback || "");
     setEditFeedbackTags(job.feedback_tags ? job.feedback_tags.join(", ") : "");
+    setEditRecurrence(job.id?.includes(".") && job.recurrence ? { ...job.recurrence } : null);
   };
 
   const cancelEdit = () => {
@@ -151,6 +155,7 @@ export default function MonthlyView({
     setEditExistingUrls([]);
     setEditFeedback("");
     setEditFeedbackTags("");
+    setEditRecurrence(null);
   };
 
   // 가상 일정 id("마스터ID.YYYY-MM-DD")에서 인스턴스 날짜를 로컬 타임존 기준으로 안전하게 파싱
@@ -171,7 +176,8 @@ export default function MonthlyView({
       feedback: editFeedback.trim() || "",
       feedback_tags: editFeedbackTags
         ? editFeedbackTags.split(",").map(t => t.trim()).filter(t => t !== "")
-        : []
+        : [],
+      ...(editRecurrence ? { recurrence: editRecurrence } : {})
     };
 
     if (id.includes('.')) {
@@ -320,8 +326,8 @@ export default function MonthlyView({
       // 3-2. 이 인스턴스 날짜부터 기존 종료일까지의 신규 마스터 일정을 추가 발행
       const newGroupId = `rec_${Date.now()}`;
       const newRecurrence = {
-        type: masterTask.recurrence!.type,
-        interval: masterTask.recurrence!.interval || 1,
+        type: pendingUpdates.recurrence?.type || masterTask.recurrence!.type,
+        interval: pendingUpdates.recurrence?.interval || masterTask.recurrence!.interval || 1,
         end_date: masterTask.recurrence!.end_date // 원래 기존 마스터의 종료일까지 유지
       };
 
@@ -1183,6 +1189,53 @@ export default function MonthlyView({
                   </div>
                 </div>
               </div>
+
+              {/* 🔄 반복 주기 변경 (반복 마스터에서 파생된 가상 일정일 때만 노출) */}
+              {editRecurrence && (
+                <div className="space-y-2 pt-1 border-t border-[var(--card-border)] pt-3">
+                  <label className="text-xs font-bold text-gray-400 uppercase flex items-center gap-1">
+                    <RefreshCw className="w-3.5 h-3.5 text-green-500" /> 반복 주기 변경
+                  </label>
+                  <div className="grid grid-cols-5 gap-1">
+                    {[
+                      { label: '매일', value: 'DAILY' },
+                      { label: '매주', value: 'WEEKLY' },
+                      { label: '격주', value: 'BIWEEKLY' },
+                      { label: '매월', value: 'MONTHLY' },
+                      { label: '지정', value: 'CUSTOM' }
+                    ].map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setEditRecurrence(prev => ({ ...(prev as Job["recurrence"]), type: opt.value } as Job["recurrence"]))}
+                        className={`py-2 rounded-xl text-[10px] font-bold border transition-all ${editRecurrence.type === opt.value
+                          ? "bg-[var(--foreground)] border-transparent text-[var(--background)] shadow-sm"
+                          : "bg-[var(--input-bg)] border-[var(--card-border)] text-gray-400 hover:bg-[var(--card-bg)] hover:border-green-500/30"
+                          }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  {editRecurrence.type === 'CUSTOM' && (
+                    <div className="flex items-center gap-2 bg-green-500/10 p-3 rounded-xl border border-green-500/20">
+                      <span className="text-xs font-bold text-green-600">간격:</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="365"
+                        value={editRecurrence.interval}
+                        onChange={(e) => setEditRecurrence(prev => ({ ...(prev as Job["recurrence"]), interval: Number(e.target.value) || 1 } as Job["recurrence"]))}
+                        className="w-16 bg-[var(--card-bg)] border border-green-500/30 rounded-lg px-2 py-1 text-sm font-bold text-green-600 outline-none focus:ring-2 focus:ring-green-500/20"
+                      />
+                      <span className="text-xs font-bold text-green-600">일 마다 반복</span>
+                    </div>
+                  )}
+                  <p className="text-[10px] text-gray-400 leading-relaxed">
+                    저장 시 &quot;이 일정과 이후 일정 일괄 수정&quot; 또는 &quot;전체 반복 일정 일괄 수정&quot;을 선택해야 반영됩니다.
+                  </p>
+                </div>
+              )}
 
               {/* Image Attachments */}
               <div className="space-y-2 pt-1">

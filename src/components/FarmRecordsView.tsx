@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
-import { Wallet, Trash2, TrendingUp, TrendingDown, Grape } from "lucide-react";
+import { Wallet, Trash2, TrendingUp, TrendingDown, Grape, Camera, X } from "lucide-react";
 import { useApp } from "@/providers/AppProvider";
 import { farmRecordService } from "@/services/farmRecordService";
 import { FarmRecord } from "@/types";
+import { compressImage } from "@/utils/imageUtils";
 
 const COST_CATEGORIES = ["농약", "비료", "인건비", "유류/농자재", "기타"];
 
@@ -28,6 +29,9 @@ export default function FarmRecordsView() {
   const [amount, setAmount] = useState<number>(0);
   const [unitPrice, setUnitPrice] = useState<number>(0);
   const [memo, setMemo] = useState("");
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user || !canRead) return;
@@ -47,14 +51,33 @@ export default function FarmRecordsView() {
         unit_price: recordType === 'harvest' && unitPrice > 0 ? unitPrice : undefined,
         memo: memo.trim() || undefined,
         user_id: user!.uid,
-      });
+      }, imageFiles);
       setAmount(0);
       setUnitPrice(0);
       setMemo("");
+      imagePreviews.forEach(url => URL.revokeObjectURL(url));
+      setImageFiles([]);
+      setImagePreviews([]);
       showToast("기록이 저장되었습니다.");
     } catch {
       showToast("저장에 실패했습니다.", "error");
     }
+  };
+
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    e.target.value = "";
+
+    const compressedFiles = await Promise.all(files.map(file => compressImage(file)));
+    setImageFiles(prev => [...prev, ...compressedFiles]);
+    setImagePreviews(prev => [...prev, ...compressedFiles.map(file => URL.createObjectURL(file))]);
+  };
+
+  const removeImage = (index: number) => {
+    URL.revokeObjectURL(imagePreviews[index]);
+    setImageFiles(prev => prev.filter((_, i) => i !== index));
+    setImagePreviews(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleDelete = async (id: string) => {
@@ -201,6 +224,29 @@ export default function FarmRecordsView() {
           />
         </div>
 
+        <div className="space-y-1.5">
+          <label className="text-xs font-bold text-gray-400 uppercase">영수증/명세서 사진 (선택)</label>
+          <div className="flex flex-wrap gap-2">
+            {imagePreviews.map((url, idx) => (
+              <div key={idx} className="relative w-14 h-14 rounded-xl overflow-hidden border-2 border-green-500/20 group">
+                <img src={url} alt="첨부 이미지" className="w-full h-full object-cover" />
+                <button
+                  type="button"
+                  onClick={() => removeImage(idx)}
+                  className="absolute top-1 right-1 p-0.5 bg-red-500 text-white rounded-full shadow-md"
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              </div>
+            ))}
+            <label className="w-14 h-14 flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-[var(--card-border)] hover:border-green-500/50 hover:bg-green-500/5 transition-all cursor-pointer">
+              <Camera className="w-5 h-5 text-gray-400" />
+              <span className="text-[8px] text-gray-400 mt-0.5 font-bold">추가</span>
+              <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageChange} />
+            </label>
+          </div>
+        </div>
+
         {canWrite && (
           <button
             onClick={handleAdd}
@@ -279,6 +325,19 @@ export default function FarmRecordsView() {
                     {format(new Date(r.date), "M/d")}{r.memo ? ` · ${r.memo}` : ""}
                   </p>
                 </div>
+                {r.image_urls && r.image_urls.length > 0 && (
+                  <div className="flex -space-x-2 shrink-0">
+                    {r.image_urls.slice(0, 3).map((url, idx) => (
+                      <img
+                        key={idx}
+                        src={url}
+                        alt="첨부 이미지"
+                        onClick={() => setViewerUrl(url)}
+                        className="w-8 h-8 rounded-lg object-cover border-2 border-[var(--card-bg)] cursor-pointer"
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
               {canDelete && (
                 <button
@@ -293,6 +352,21 @@ export default function FarmRecordsView() {
           ))
         )}
       </div>
+
+      {viewerUrl && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          onClick={() => setViewerUrl(null)}
+        >
+          <img src={viewerUrl} alt="첨부 이미지 원본" className="max-w-full max-h-full rounded-2xl object-contain" />
+          <button
+            onClick={() => setViewerUrl(null)}
+            className="absolute top-4 right-4 p-2 bg-white/10 text-white rounded-full hover:bg-white/20 transition-all"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,7 +1,6 @@
 import { Job } from "@/types";
 import { firestoreRepo } from "@/repo/firestoreRepository";
-import { storage } from "@/lib/firebase";
-import { ref, uploadBytes, getDownloadURL, deleteObject, listAll } from "firebase/storage";
+import { uploadImagesToStorage, deleteFolderImages } from "@/utils/imageUtils";
 
 export class JobService {
     /**
@@ -37,7 +36,7 @@ export class JobService {
 
             // 2. 이미지가 있으면 업로드 후 업데이트
             if (imageFiles && imageFiles.length > 0) {
-                const urls = await this.uploadImages(jobId, imageFiles);
+                const urls = await uploadImagesToStorage(`jobs/${jobId}`, imageFiles);
                 await this.updateJob(jobId, { image_urls: urls });
             }
 
@@ -49,29 +48,13 @@ export class JobService {
     }
 
     /**
-     * 이미지를 업로드하고 URL 리스트를 반환합니다.
-     */
-    private async uploadImages(jobId: string, files: File[]): Promise<string[]> {
-        if (!storage) throw new Error("Storage가 초기화되지 않았습니다.");
-
-        const uploadPromises = files.map(async (file, index) => {
-            const fileName = `${Date.now()}_${index}_${file.name}`;
-            const storageRef = ref(storage, `jobs/${jobId}/${fileName}`);
-            const snapshot = await uploadBytes(storageRef, file);
-            return await getDownloadURL(snapshot.ref);
-        });
-
-        return await Promise.all(uploadPromises);
-    }
-
-    /**
      * 일정을 업데이트합니다.
      */
     async updateJob(id: string, updates: Partial<Job>, newImageFiles?: File[]): Promise<void> {
         try {
             // 신규 이미지 파일이 있는 경우 업로드 후 URL 리스트 업데이트
             if (newImageFiles && newImageFiles.length > 0) {
-                const newUrls = await this.uploadImages(id, newImageFiles);
+                const newUrls = await uploadImagesToStorage(`jobs/${id}`, newImageFiles);
                 
                 // 만약 updates에 이미 image_urls가 있다면(일부 삭제된 상태) 거기서 추가, 
                 // 없으면 서버에서 다시 가져와서 추가
@@ -99,27 +82,12 @@ export class JobService {
     async deleteJob(id: string): Promise<void> {
         try {
             // 1. Storage 이미지 삭제
-            await this.deleteAllImages(id);
+            await deleteFolderImages(`jobs/${id}`);
             // 2. Firestore 데이터 삭제
             await firestoreRepo.deleteJob(id);
         } catch (error) {
             console.error("JobService: Error deleting job", error);
             throw error;
-        }
-    }
-
-    /**
-     * 특정 일정의 모든 이미지를 Storage에서 삭제합니다.
-     */
-    private async deleteAllImages(jobId: string): Promise<void> {
-        if (!storage) return;
-        const folderRef = ref(storage, `jobs/${jobId}`);
-        try {
-            const res = await listAll(folderRef);
-            const deletePromises = res.items.map(item => deleteObject(item));
-            await Promise.all(deletePromises);
-        } catch (error) {
-            console.warn("Storage 이미지 삭제 중 오류 (이미지가 없을 수 있음):", error);
         }
     }
 

@@ -286,6 +286,11 @@ export class FirestoreRepository {
     return docRef.id;
   }
 
+  async updateFarmRecord(id: string, updates: Partial<FarmRecord>): Promise<void> {
+    const cleanedUpdates = this.cleanUndefined(updates);
+    await updateDoc(doc(this.farmRecordsCol, id), cleanedUpdates);
+  }
+
   async deleteFarmRecord(id: string): Promise<void> {
     await deleteDoc(doc(this.farmRecordsCol, id));
   }
