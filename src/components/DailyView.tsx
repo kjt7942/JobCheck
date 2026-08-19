@@ -1018,32 +1018,9 @@ export default function DailyView({
               className="px-4 py-1 text-center cursor-pointer group"
               title="오늘 날짜로 이동"
             >
-              <div className="flex items-center justify-center gap-2">
-                <h2 className="text-xl font-black text-[var(--foreground)] tracking-tight group-hover:text-green-600 transition-colors">
-                  {format(viewDate, "M월 d일", { locale: ko })}
-                </h2>
-                {headerWeather && (
-                  <span className="flex items-center gap-1 text-[10px] font-bold text-green-600 bg-green-500/10 px-1.5 py-0.5 rounded-lg whitespace-nowrap">
-                    {headerWeather.weather && (
-                      headerWeather.weather.includes("맑음") ? <Sun className="w-3 h-3 text-amber-500" /> :
-                        headerWeather.weather.includes("비") ? <CloudRain className="w-3 h-3 text-blue-500" /> :
-                          headerWeather.weather.includes("흐림") ? <Cloud className="w-3 h-3 text-gray-500" /> :
-                            headerWeather.weather.includes("눈") ? <CloudSnow className="w-3 h-3 text-blue-300" /> :
-                              <Cloud className="w-3 h-3" />
-                    )}
-                    {((headerWeather.temp_max !== undefined && headerWeather.temp_max !== null && !isNaN(Number(headerWeather.temp_max))) ||
-                      (headerWeather.temp_min !== undefined && headerWeather.temp_min !== null && !isNaN(Number(headerWeather.temp_min)))) && (
-                      <span className="font-mono">
-                        {headerWeather.temp_max !== undefined && headerWeather.temp_max !== null && !isNaN(Number(headerWeather.temp_max)) && <span className="text-red-400">{headerWeather.temp_max}</span>}
-                        {headerWeather.temp_max !== undefined && headerWeather.temp_max !== null && !isNaN(Number(headerWeather.temp_max)) &&
-                         headerWeather.temp_min !== undefined && headerWeather.temp_min !== null && !isNaN(Number(headerWeather.temp_min)) && <span className="text-gray-400 opacity-50 mx-0.5">/</span>}
-                        {headerWeather.temp_min !== undefined && headerWeather.temp_min !== null && !isNaN(Number(headerWeather.temp_min)) && <span className="text-blue-400">{headerWeather.temp_min}</span>}
-                        ℃
-                      </span>
-                    )}
-                  </span>
-                )}
-              </div>
+              <h2 className="text-xl font-black text-[var(--foreground)] tracking-tight group-hover:text-green-600 transition-colors">
+                {format(viewDate, "M월 d일", { locale: ko })}
+              </h2>
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none">
                 {format(viewDate, "yyyy (eeee)", { locale: ko })}
               </p>
@@ -1122,8 +1099,31 @@ export default function DailyView({
               <div className="w-1.5 h-4 bg-green-500 rounded-full" />
               <h3 className="text-md font-bold text-[var(--foreground)]">일정 목록</h3>
             </div>
-            <div className="text-[11px] font-bold text-gray-400 bg-[var(--input-bg)] px-2 py-1 rounded-lg">
-              TOTAL <span className="text-green-600 ml-1">{totalCount}</span>
+            <div className="flex items-center gap-2">
+              {headerWeather && (
+                <span className="flex items-center gap-1 text-[11px] font-bold text-green-600 bg-green-500/10 px-2 py-1 rounded-lg whitespace-nowrap">
+                  {headerWeather.weather && (
+                    headerWeather.weather.includes("맑음") ? <Sun className="w-3.5 h-3.5 text-amber-500" /> :
+                      headerWeather.weather.includes("비") ? <CloudRain className="w-3.5 h-3.5 text-blue-500" /> :
+                        headerWeather.weather.includes("흐림") ? <Cloud className="w-3.5 h-3.5 text-gray-500" /> :
+                          headerWeather.weather.includes("눈") ? <CloudSnow className="w-3.5 h-3.5 text-blue-300" /> :
+                            <Cloud className="w-3.5 h-3.5" />
+                  )}
+                  {((headerWeather.temp_max !== undefined && headerWeather.temp_max !== null && !isNaN(Number(headerWeather.temp_max))) ||
+                    (headerWeather.temp_min !== undefined && headerWeather.temp_min !== null && !isNaN(Number(headerWeather.temp_min)))) && (
+                    <span className="font-mono">
+                      {headerWeather.temp_max !== undefined && headerWeather.temp_max !== null && !isNaN(Number(headerWeather.temp_max)) && <span className="text-red-400">{headerWeather.temp_max}</span>}
+                      {headerWeather.temp_max !== undefined && headerWeather.temp_max !== null && !isNaN(Number(headerWeather.temp_max)) &&
+                       headerWeather.temp_min !== undefined && headerWeather.temp_min !== null && !isNaN(Number(headerWeather.temp_min)) && <span className="text-gray-400 opacity-50 mx-0.5">/</span>}
+                      {headerWeather.temp_min !== undefined && headerWeather.temp_min !== null && !isNaN(Number(headerWeather.temp_min)) && <span className="text-blue-400">{headerWeather.temp_min}</span>}
+                      ℃
+                    </span>
+                  )}
+                </span>
+              )}
+              <div className="text-[11px] font-bold text-gray-400 bg-[var(--input-bg)] px-2 py-1 rounded-lg">
+                TOTAL <span className="text-green-600 ml-1">{totalCount}</span>
+              </div>
             </div>
           </div>
 
