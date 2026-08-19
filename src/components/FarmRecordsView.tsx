@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import { Wallet, Trash2, TrendingUp, TrendingDown, Grape, Camera, X, Sparkles } from "lucide-react";
 import { useApp } from "@/providers/AppProvider";
@@ -36,6 +36,70 @@ export default function FarmRecordsView() {
   const [ocrConfirming, setOcrConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // 확인 모달 이미지 뷰어: 핀치 확대/드래그 이동/더블탭 확대 (외부 라이브러리 없이 Pointer Events로 처리)
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isInteracting, setIsInteracting] = useState(false);
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const pinchStart = useRef<{ dist: number; zoom: number } | null>(null);
+  const panStart = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
+  const lastTap = useRef(0);
+  const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
+
+  const closeOcrConfirm = () => {
+    setOcrConfirming(false);
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+    pointers.current.clear();
+  };
+
+  const handleImgPointerDown = (e: React.PointerEvent<HTMLImageElement>) => {
+    (e.target as Element).setPointerCapture(e.pointerId);
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    setIsInteracting(true);
+    if (pointers.current.size === 2) {
+      const [p1, p2] = Array.from(pointers.current.values());
+      pinchStart.current = { dist: Math.hypot(p1.x - p2.x, p1.y - p2.y), zoom };
+      panStart.current = null;
+    } else if (pointers.current.size === 1) {
+      panStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
+    }
+  };
+
+  const handleImgPointerMove = (e: React.PointerEvent<HTMLImageElement>) => {
+    if (!pointers.current.has(e.pointerId)) return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pointers.current.size === 2 && pinchStart.current) {
+      const [p1, p2] = Array.from(pointers.current.values());
+      const dist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+      setZoom(clamp(pinchStart.current.zoom * (dist / pinchStart.current.dist), 1, 4));
+    } else if (pointers.current.size === 1 && panStart.current && zoom > 1) {
+      setPan({
+        x: panStart.current.panX + (e.clientX - panStart.current.x),
+        y: panStart.current.panY + (e.clientY - panStart.current.y),
+      });
+    }
+  };
+
+  const handleImgPointerUp = (e: React.PointerEvent<HTMLImageElement>) => {
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size < 2) pinchStart.current = null;
+    if (pointers.current.size > 0) return;
+    panStart.current = null;
+    setIsInteracting(false);
+
+    const now = Date.now();
+    if (now - lastTap.current < 280) {
+      // 더블탭/더블클릭: 확대 <-> 원본 크기 토글
+      if (zoom > 1) { setZoom(1); setPan({ x: 0, y: 0 }); } else { setZoom(2.5); }
+    } else if (zoom < 1.05) {
+      setZoom(1);
+      setPan({ x: 0, y: 0 });
+    }
+    lastTap.current = now;
+  };
+
   useEffect(() => {
     if (!user || !canRead) return;
     const unsubscribe = farmRecordService.subscribeFarmRecords(setRecords);
@@ -63,7 +127,7 @@ export default function FarmRecordsView() {
       imagePreviews.forEach(url => URL.revokeObjectURL(url));
       setImageFiles([]);
       setImagePreviews([]);
-      setOcrConfirming(false);
+      closeOcrConfirm();
       showToast("기록이 저장되었습니다.");
     } catch {
       showToast("저장에 실패했습니다.", "error");
@@ -125,7 +189,7 @@ export default function FarmRecordsView() {
     URL.revokeObjectURL(imagePreviews[index]);
     setImageFiles(prev => prev.filter((_, i) => i !== index));
     setImagePreviews(prev => prev.filter((_, i) => i !== index));
-    setOcrConfirming(false);
+    closeOcrConfirm();
   };
 
   const handleDelete = async (id: string) => {
@@ -410,21 +474,42 @@ export default function FarmRecordsView() {
       </div>
 
       {ocrConfirming && (
-        <div
-          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
-          onClick={() => setOcrConfirming(false)}
-        >
-          <div
-            className="bg-[var(--card-bg)] rounded-[24px] p-5 shadow-2xl w-full max-w-sm max-h-[90vh] overflow-y-auto space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 z-[200] flex flex-col bg-black">
+          {/* 이미지 뷰어: 핀치 확대, 드래그 이동, 더블탭 확대/축소 */}
+          <div className="relative flex-1 min-h-0 overflow-hidden touch-none select-none">
             {imagePreviews[0] && (
               <img
                 src={imagePreviews[0]}
                 alt="첨부한 영수증"
-                className="w-full max-h-80 object-contain rounded-2xl border border-[var(--card-border)] bg-[var(--input-bg)]"
+                draggable={false}
+                onPointerDown={handleImgPointerDown}
+                onPointerMove={handleImgPointerMove}
+                onPointerUp={handleImgPointerUp}
+                onPointerCancel={handleImgPointerUp}
+                className="w-full h-full object-contain touch-none"
+                style={{
+                  transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                  transformOrigin: "center center",
+                  transition: isInteracting ? "none" : "transform 0.15s ease-out",
+                  cursor: zoom > 1 ? "grab" : "default",
+                }}
               />
             )}
+            <button
+              onClick={closeOcrConfirm}
+              className="absolute top-3 right-3 p-2 bg-white/10 text-white rounded-full hover:bg-white/20 transition-all"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            {zoom === 1 && (
+              <p className="absolute bottom-3 left-0 right-0 text-center text-[11px] text-white/50 pointer-events-none">
+                손가락 두 개로 확대 · 두 번 탭하면 확대/축소돼요
+              </p>
+            )}
+          </div>
+
+          {/* 인식 정보 + 액션 (하단 고정) */}
+          <div className="bg-[var(--card-bg)] rounded-t-[24px] p-5 shadow-2xl max-h-[45vh] overflow-y-auto space-y-4">
             <div className="bg-[var(--input-bg)] rounded-2xl p-4 space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-400 font-bold">날짜</span>
@@ -448,7 +533,7 @@ export default function FarmRecordsView() {
             <p className="text-xs text-gray-400 text-center">AI가 영수증에서 읽은 내용이에요. 사진과 비교해서 확인해 주세요.</p>
             <div className="grid grid-cols-2 gap-2">
               <button
-                onClick={() => setOcrConfirming(false)}
+                onClick={closeOcrConfirm}
                 disabled={saving}
                 className="py-2.5 rounded-xl text-sm font-black bg-[var(--input-bg)] border border-[var(--card-border)] text-gray-500 hover:bg-gray-500/10 transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
               >
