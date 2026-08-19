@@ -721,25 +721,26 @@ export default function MonthlyView({
                       if (dayStr > todayStr) return null; // 미래 날짜는 날씨 표시 안함
 
                       const weatherTask = dayTasks.find(t => t.weather || (t.temp_max !== undefined && t.temp_max !== null && !isNaN(Number(t.temp_max))) || (t.temp_min !== undefined && t.temp_min !== null && !isNaN(Number(t.temp_min))));
-                      if (!weatherTask) return null;
+                      const weatherData = weatherTask ?? dailyWeather[dayStr];
+                      if (!weatherData) return null;
                       return (
                         <div className="flex items-center gap-0.5 text-[7.5px] md:text-[9px] text-green-600 font-bold bg-green-500/5 px-0.5 md:px-1 py-0 rounded scale-[0.82] sm:scale-100 origin-left shrink-0 ml-[-2px] sm:ml-0">
-                          {weatherTask.weather && (
+                          {weatherData.weather && (
                             <span className="flex items-center">
-                              {weatherTask.weather.includes("맑음") ? <Sun className="w-2 md:w-2.5 h-2 md:h-2.5 text-amber-500 shrink-0" /> :
-                               weatherTask.weather.includes("비") ? <CloudRain className="w-2 md:w-2.5 h-2 md:h-2.5 text-blue-500 shrink-0" /> :
-                               weatherTask.weather.includes("흐림") ? <Cloud className="w-2 md:w-2.5 h-2 md:h-2.5 text-gray-500 shrink-0" /> :
-                               weatherTask.weather.includes("눈") ? <CloudSnow className="w-2 md:w-2.5 h-2 md:h-2.5 text-blue-300 shrink-0" /> :
+                              {weatherData.weather.includes("맑음") ? <Sun className="w-2 md:w-2.5 h-2 md:h-2.5 text-amber-500 shrink-0" /> :
+                               weatherData.weather.includes("비") ? <CloudRain className="w-2 md:w-2.5 h-2 md:h-2.5 text-blue-500 shrink-0" /> :
+                               weatherData.weather.includes("흐림") ? <Cloud className="w-2 md:w-2.5 h-2 md:h-2.5 text-gray-500 shrink-0" /> :
+                               weatherData.weather.includes("눈") ? <CloudSnow className="w-2 md:w-2.5 h-2 md:h-2.5 text-blue-300 shrink-0" /> :
                                <Cloud className="w-2 md:w-2.5 h-2 md:h-2.5 shrink-0" />}
                             </span>
                           )}
-                          {((weatherTask.temp_max !== undefined && weatherTask.temp_max !== null && !isNaN(Number(weatherTask.temp_max))) || 
-                            (weatherTask.temp_min !== undefined && weatherTask.temp_min !== null && !isNaN(Number(weatherTask.temp_min)))) && (
+                          {((weatherData.temp_max !== undefined && weatherData.temp_max !== null && !isNaN(Number(weatherData.temp_max))) ||
+                            (weatherData.temp_min !== undefined && weatherData.temp_min !== null && !isNaN(Number(weatherData.temp_min)))) && (
                             <span className="flex items-center font-mono scale-[0.9] pl-0.5 shrink-0 ml-0.5 border-l border-green-500/10">
-                              {weatherTask.temp_max !== undefined && weatherTask.temp_max !== null && !isNaN(Number(weatherTask.temp_max)) && <span className="text-red-400 font-black">{weatherTask.temp_max}</span>}
-                              {weatherTask.temp_max !== undefined && weatherTask.temp_max !== null && !isNaN(Number(weatherTask.temp_max)) && 
-                               weatherTask.temp_min !== undefined && weatherTask.temp_min !== null && !isNaN(Number(weatherTask.temp_min)) && <span className="text-gray-400 opacity-40 mx-[0.5px]">/</span>}
-                              {weatherTask.temp_min !== undefined && weatherTask.temp_min !== null && !isNaN(Number(weatherTask.temp_min)) && <span className="text-blue-400 font-black">{weatherTask.temp_min}</span>}
+                              {weatherData.temp_max !== undefined && weatherData.temp_max !== null && !isNaN(Number(weatherData.temp_max)) && <span className="text-red-400 font-black">{weatherData.temp_max}</span>}
+                              {weatherData.temp_max !== undefined && weatherData.temp_max !== null && !isNaN(Number(weatherData.temp_max)) &&
+                               weatherData.temp_min !== undefined && weatherData.temp_min !== null && !isNaN(Number(weatherData.temp_min)) && <span className="text-gray-400 opacity-40 mx-[0.5px]">/</span>}
+                              {weatherData.temp_min !== undefined && weatherData.temp_min !== null && !isNaN(Number(weatherData.temp_min)) && <span className="text-blue-400 font-black">{weatherData.temp_min}</span>}
                             </span>
                           )}
                         </div>
