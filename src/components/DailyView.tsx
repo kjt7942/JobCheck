@@ -501,6 +501,16 @@ export default function DailyView({
     return viewDateStr > todayStr;
   })();
 
+  // 🌦️ 상단 헤더용 날씨: 일정에 날씨가 있으면 그걸, 없으면 그날의 자동 수집 캐시(dailyWeather)로 폴백
+  const headerWeather = isFutureDate ? null : (() => {
+    const taskWithWeather = viewTasks.find(t =>
+      t.weather ||
+      (t.temp_max !== undefined && t.temp_max !== null && !isNaN(Number(t.temp_max))) ||
+      (t.temp_min !== undefined && t.temp_min !== null && !isNaN(Number(t.temp_min)))
+    );
+    return taskWithWeather ?? dailyWeather[format(viewDate, "yyyy-MM-dd")] ?? null;
+  })();
+
   // 💡 작년 이맘때(±15일) 작성했던 피드백 데이터 수집
   const lastYearFeedbackTasks = (() => {
     return tasks.filter(t => {
@@ -613,24 +623,18 @@ export default function DailyView({
   const goToNext = () => setViewDate(prev => addDays(prev, 1));
   const goToToday = () => setViewDate(new Date());
 
-  // 해당 일자에 등록된 일정이 있다면 날씨/기온 정보를 자동으로 불러와 기본값으로 설정
+  // 해당 일자의 날씨(일정에 기록된 값, 없으면 자동 수집 캐시)를 일정 등록 폼의 기본값으로 설정
   useEffect(() => {
-    const existingTaskWithWeather = viewTasks.find(t => 
-      t.weather || 
-      (t.temp_max !== undefined && t.temp_max !== null) || 
-      (t.temp_min !== undefined && t.temp_min !== null)
-    );
-
-    if (existingTaskWithWeather) {
-      if (existingTaskWithWeather.weather) setManualWeather(existingTaskWithWeather.weather);
-      if (existingTaskWithWeather.temp_max !== undefined && existingTaskWithWeather.temp_max !== null) {
-        setTmx(String(existingTaskWithWeather.temp_max));
-      }
-      if (existingTaskWithWeather.temp_min !== undefined && existingTaskWithWeather.temp_min !== null) {
-        setTmn(String(existingTaskWithWeather.temp_min));
-      }
+    if (!headerWeather) return;
+    if (headerWeather.weather) setManualWeather(headerWeather.weather);
+    if (headerWeather.temp_max !== undefined && headerWeather.temp_max !== null) {
+      setTmx(String(headerWeather.temp_max));
     }
-  }, [viewDate, tasks.length]); // 날짜 변경 또는 전체 일정 개수 변경 시 실행
+    if (headerWeather.temp_min !== undefined && headerWeather.temp_min !== null) {
+      setTmn(String(headerWeather.temp_min));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewDate, tasks.length, dailyWeather]); // 날짜 변경, 전체 일정 개수 변경, 또는 날씨 캐시 로딩 시 실행
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean = false) => {
     const files = Array.from(e.target.files || []);
@@ -1014,9 +1018,32 @@ export default function DailyView({
               className="px-4 py-1 text-center cursor-pointer group"
               title="오늘 날짜로 이동"
             >
-              <h2 className="text-xl font-black text-[var(--foreground)] tracking-tight group-hover:text-green-600 transition-colors">
-                {format(viewDate, "M월 d일", { locale: ko })}
-              </h2>
+              <div className="flex items-center justify-center gap-2">
+                <h2 className="text-xl font-black text-[var(--foreground)] tracking-tight group-hover:text-green-600 transition-colors">
+                  {format(viewDate, "M월 d일", { locale: ko })}
+                </h2>
+                {headerWeather && (
+                  <span className="flex items-center gap-1 text-[10px] font-bold text-green-600 bg-green-500/10 px-1.5 py-0.5 rounded-lg whitespace-nowrap">
+                    {headerWeather.weather && (
+                      headerWeather.weather.includes("맑음") ? <Sun className="w-3 h-3 text-amber-500" /> :
+                        headerWeather.weather.includes("비") ? <CloudRain className="w-3 h-3 text-blue-500" /> :
+                          headerWeather.weather.includes("흐림") ? <Cloud className="w-3 h-3 text-gray-500" /> :
+                            headerWeather.weather.includes("눈") ? <CloudSnow className="w-3 h-3 text-blue-300" /> :
+                              <Cloud className="w-3 h-3" />
+                    )}
+                    {((headerWeather.temp_max !== undefined && headerWeather.temp_max !== null && !isNaN(Number(headerWeather.temp_max))) ||
+                      (headerWeather.temp_min !== undefined && headerWeather.temp_min !== null && !isNaN(Number(headerWeather.temp_min)))) && (
+                      <span className="font-mono">
+                        {headerWeather.temp_max !== undefined && headerWeather.temp_max !== null && !isNaN(Number(headerWeather.temp_max)) && <span className="text-red-400">{headerWeather.temp_max}</span>}
+                        {headerWeather.temp_max !== undefined && headerWeather.temp_max !== null && !isNaN(Number(headerWeather.temp_max)) &&
+                         headerWeather.temp_min !== undefined && headerWeather.temp_min !== null && !isNaN(Number(headerWeather.temp_min)) && <span className="text-gray-400 opacity-50 mx-0.5">/</span>}
+                        {headerWeather.temp_min !== undefined && headerWeather.temp_min !== null && !isNaN(Number(headerWeather.temp_min)) && <span className="text-blue-400">{headerWeather.temp_min}</span>}
+                        ℃
+                      </span>
+                    )}
+                  </span>
+                )}
+              </div>
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none">
                 {format(viewDate, "yyyy (eeee)", { locale: ko })}
               </p>
