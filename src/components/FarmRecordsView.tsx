@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
-import { Wallet, Trash2, TrendingUp, TrendingDown, Grape, Camera, X } from "lucide-react";
+import { Wallet, Trash2, TrendingUp, TrendingDown, Grape, Camera, X, Sparkles } from "lucide-react";
 import { useApp } from "@/providers/AppProvider";
 import { farmRecordService } from "@/services/farmRecordService";
 import { FarmRecord } from "@/types";
@@ -32,6 +32,7 @@ export default function FarmRecordsView() {
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+  const [ocrLoading, setOcrLoading] = useState(false);
 
   useEffect(() => {
     if (!user || !canRead) return;
@@ -70,8 +71,47 @@ export default function FarmRecordsView() {
     e.target.value = "";
 
     const compressedFiles = await Promise.all(files.map(file => compressImage(file)));
+    const isFirstImage = imageFiles.length === 0;
     setImageFiles(prev => [...prev, ...compressedFiles]);
     setImagePreviews(prev => [...prev, ...compressedFiles.map(file => URL.createObjectURL(file))]);
+
+    // 첫 번째 첨부 사진만 AI로 자동 인식해서 날짜/분류/금액/메모를 채워줌
+    if (isFirstImage && recordType === 'cost') {
+      void runReceiptOcr(compressedFiles[0]);
+    }
+  };
+
+  const runReceiptOcr = async (file: File) => {
+    setOcrLoading(true);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const res = await fetch("/api/receipt-ocr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: base64, mimeType: file.type, categories: COST_CATEGORIES }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        showToast(data.message || "영수증 인식에 실패했습니다.", "error");
+        return;
+      }
+
+      if (data.date) setDate(data.date);
+      if (data.category && COST_CATEGORIES.includes(data.category)) setCategory(data.category);
+      if (typeof data.amount === "number" && data.amount > 0) setAmount(data.amount);
+      if (data.memo) setMemo(data.memo);
+      showToast("영수증 내용을 자동으로 채웠습니다. 확인 후 저장해 주세요.");
+    } catch {
+      showToast("영수증 인식 중 오류가 발생했습니다.", "error");
+    } finally {
+      setOcrLoading(false);
+    }
   };
 
   const removeImage = (index: number) => {
@@ -225,7 +265,14 @@ export default function FarmRecordsView() {
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs font-bold text-gray-400 uppercase">영수증/명세서 사진 (선택)</label>
+          <label className="text-xs font-bold text-gray-400 uppercase flex items-center gap-1.5">
+            영수증/명세서 사진 (선택)
+            {ocrLoading && (
+              <span className="inline-flex items-center gap-1 text-emerald-500 normal-case font-bold">
+                <Sparkles className="w-3 h-3 animate-pulse" /> AI 인식 중...
+              </span>
+            )}
+          </label>
           <div className="flex flex-wrap gap-2">
             {imagePreviews.map((url, idx) => (
               <div key={idx} className="relative w-14 h-14 rounded-xl overflow-hidden border-2 border-green-500/20 group">
