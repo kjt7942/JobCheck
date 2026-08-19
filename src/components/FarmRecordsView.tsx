@@ -33,6 +33,8 @@ export default function FarmRecordsView() {
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrConfirming, setOcrConfirming] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!user || !canRead) return;
@@ -43,6 +45,8 @@ export default function FarmRecordsView() {
   const handleAdd = async () => {
     if (!canWrite) { showToast("등록 권한이 없습니다.", "error"); return; }
     if (amount <= 0) { showToast("금액/수확량을 입력해 주세요.", "error"); return; }
+    if (saving) return;
+    setSaving(true);
     try {
       await farmRecordService.addFarmRecord({
         type: recordType,
@@ -59,9 +63,12 @@ export default function FarmRecordsView() {
       imagePreviews.forEach(url => URL.revokeObjectURL(url));
       setImageFiles([]);
       setImagePreviews([]);
+      setOcrConfirming(false);
       showToast("기록이 저장되었습니다.");
     } catch {
       showToast("저장에 실패했습니다.", "error");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -106,7 +113,7 @@ export default function FarmRecordsView() {
       if (data.category && COST_CATEGORIES.includes(data.category)) setCategory(data.category);
       if (typeof data.amount === "number" && data.amount > 0) setAmount(data.amount);
       if (data.memo) setMemo(data.memo);
-      showToast("영수증 내용을 자동으로 채웠습니다. 확인 후 저장해 주세요.");
+      setOcrConfirming(true);
     } catch {
       showToast("영수증 인식 중 오류가 발생했습니다.", "error");
     } finally {
@@ -118,6 +125,7 @@ export default function FarmRecordsView() {
     URL.revokeObjectURL(imagePreviews[index]);
     setImageFiles(prev => prev.filter((_, i) => i !== index));
     setImagePreviews(prev => prev.filter((_, i) => i !== index));
+    setOcrConfirming(false);
   };
 
   const handleDelete = async (id: string) => {
@@ -297,9 +305,10 @@ export default function FarmRecordsView() {
         {canWrite && (
           <button
             onClick={handleAdd}
-            className="w-full py-2.5 rounded-xl text-sm font-black bg-green-600 text-white hover:bg-green-700 transition-all active:scale-95"
+            disabled={saving}
+            className="w-full py-2.5 rounded-xl text-sm font-black bg-green-600 text-white hover:bg-green-700 transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
           >
-            기록 저장
+            {saving ? "저장 중..." : "기록 저장"}
           </button>
         )}
       </div>
@@ -399,6 +408,63 @@ export default function FarmRecordsView() {
           ))
         )}
       </div>
+
+      {ocrConfirming && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          onClick={() => setOcrConfirming(false)}
+        >
+          <div
+            className="bg-[var(--card-bg)] rounded-[24px] p-5 shadow-2xl w-full max-w-sm max-h-[90vh] overflow-y-auto space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {imagePreviews[0] && (
+              <img
+                src={imagePreviews[0]}
+                alt="첨부한 영수증"
+                className="w-full max-h-80 object-contain rounded-2xl border border-[var(--card-border)] bg-[var(--input-bg)]"
+              />
+            )}
+            <div className="bg-[var(--input-bg)] rounded-2xl p-4 space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-400 font-bold">날짜</span>
+                <span className="font-black text-[var(--foreground)]">{date}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-400 font-bold">분류</span>
+                <span className="font-black text-[var(--foreground)]">{category}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-400 font-bold">금액</span>
+                <span className="font-black text-[var(--foreground)]">{formatWon(amount)}</span>
+              </div>
+              {memo && (
+                <div className="flex items-center justify-between text-sm gap-3">
+                  <span className="text-gray-400 font-bold shrink-0">메모</span>
+                  <span className="font-black text-[var(--foreground)] truncate text-right">{memo}</span>
+                </div>
+              )}
+            </div>
+            <p className="text-xs text-gray-400 text-center">AI가 영수증에서 읽은 내용이에요. 사진과 비교해서 확인해 주세요.</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setOcrConfirming(false)}
+                disabled={saving}
+                className="py-2.5 rounded-xl text-sm font-black bg-[var(--input-bg)] border border-[var(--card-border)] text-gray-500 hover:bg-gray-500/10 transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
+              >
+                직접 입력
+              </button>
+              <button
+                onClick={handleAdd}
+                disabled={saving}
+                className="py-2.5 rounded-xl text-sm font-black bg-green-600 text-white hover:bg-green-700 transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
+              >
+                {saving ? "저장 중..." : "저장"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {viewerUrl && (
         <div
