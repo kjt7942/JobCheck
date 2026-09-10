@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { Job, ImprovementNote } from "@/types";
-import { Search, StickyNote, Tag, Calendar, AlertCircle, Plus, Trash2, PenLine } from "lucide-react";
+import { Search, StickyNote, Tag, Calendar, AlertCircle, Plus, Trash2, PenLine, Pencil, Check, X } from "lucide-react";
 import { useApp } from "@/providers/AppProvider";
 import { improvementNoteService } from "@/services/improvementNoteService";
 
@@ -36,6 +36,11 @@ export default function NotesArchiveView({ tasks }: NotesArchiveViewProps) {
   const [memoTags, setMemoTags] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState("");
+  const [editTags, setEditTags] = useState("");
+  const [updating, setUpdating] = useState(false);
+
   useEffect(() => {
     if (!user) return;
     const unsubscribe = improvementNoteService.subscribeImprovementNotes(setNotes);
@@ -61,6 +66,38 @@ export default function NotesArchiveView({ tasks }: NotesArchiveViewProps) {
       showToast("저장에 실패했습니다.", "error");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const startEditMemo = (note: ImprovementNote) => {
+    setEditingId(note.id!);
+    setEditContent(note.content);
+    setEditTags((note.tags || []).join(", "));
+  };
+
+  const cancelEditMemo = () => {
+    setEditingId(null);
+    setEditContent("");
+    setEditTags("");
+  };
+
+  const handleSaveEditMemo = async () => {
+    if (!canWrite) { showToast("수정 권한이 없습니다.", "error"); return; }
+    if (!editContent.trim()) { showToast("메모 내용을 입력해 주세요.", "error"); return; }
+    if (updating || !editingId) return;
+    setUpdating(true);
+    try {
+      const tags = editTags.split(",").map(t => t.trim()).filter(t => t !== "");
+      await improvementNoteService.updateImprovementNote(editingId, {
+        content: editContent.trim(),
+        tags,
+      });
+      cancelEditMemo();
+      showToast("메모가 수정되었습니다.");
+    } catch {
+      showToast("수정에 실패했습니다.", "error");
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -238,59 +275,107 @@ export default function NotesArchiveView({ tasks }: NotesArchiveViewProps) {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-          {filteredEntries.map((entry) => (
-            <div
-              key={entry.key}
-              className="bg-amber-500/5 dark:bg-amber-500/[0.02] border-2 border-amber-500/10 dark:border-amber-500/5 rounded-[28px] p-6 shadow-sm flex flex-col space-y-4 hover:shadow-md transition-shadow relative overflow-hidden group"
-            >
-              {/* Note Header */}
-              <div className="flex items-start justify-between gap-4">
-                <div className="space-y-1">
-                  <h3 className="text-sm font-black text-[var(--foreground)] tracking-tight">
-                    {entry.title || "메모"}
-                  </h3>
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <div className="flex items-center gap-1 text-[10px] text-gray-400 font-mono font-bold bg-[var(--input-bg)] border border-[var(--card-border)] px-2 py-0.5 rounded-lg">
-                    <Calendar className="w-3 h-3 text-gray-400" />
-                    {format(new Date(entry.date), "yyyy-MM-dd", { locale: ko })}
+          {filteredEntries.map((entry) => {
+            const isEditing = entry.source === "note" && editingId === entry.noteId;
+            return (
+              <div
+                key={entry.key}
+                className="bg-amber-500/5 dark:bg-amber-500/[0.02] border-2 border-amber-500/10 dark:border-amber-500/5 rounded-[28px] p-6 shadow-sm flex flex-col space-y-4 hover:shadow-md transition-shadow relative overflow-hidden group"
+              >
+                {/* Note Header */}
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-black text-[var(--foreground)] tracking-tight">
+                      {entry.title || "메모"}
+                    </h3>
                   </div>
-                  {entry.source === "note" && canDelete && (
-                    <button
-                      onClick={() => handleDeleteMemo(entry.noteId!)}
-                      className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
-                      title="삭제"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <div className="flex items-center gap-1 text-[10px] text-gray-400 font-mono font-bold bg-[var(--input-bg)] border border-[var(--card-border)] px-2 py-0.5 rounded-lg">
+                      <Calendar className="w-3 h-3 text-gray-400" />
+                      {format(new Date(entry.date), "yyyy-MM-dd", { locale: ko })}
+                    </div>
+                    {entry.source === "note" && !isEditing && canWrite && (
+                      <button
+                        onClick={() => startEditMemo(notes.find(n => n.id === entry.noteId)!)}
+                        className="p-1 text-gray-400 hover:text-green-600 hover:bg-green-500/10 rounded-lg transition-all"
+                        title="수정"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {entry.source === "note" && !isEditing && canDelete && (
+                      <button
+                        onClick={() => handleDeleteMemo(entry.noteId!)}
+                        className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                        title="삭제"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
+
+                {isEditing ? (
+                  <div className="space-y-3">
+                    <textarea
+                      value={editContent}
+                      onChange={(e) => setEditContent(e.target.value)}
+                      rows={3}
+                      className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-xs text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-green-400/20 focus:border-green-500 transition-all resize-none"
+                    />
+                    <input
+                      type="text"
+                      value={editTags}
+                      onChange={(e) => setEditTags(e.target.value)}
+                      placeholder="태그 (쉼표로 구분, 선택)"
+                      className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-3 py-2 text-xs text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-green-400/20 focus:border-green-500 transition-all"
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={cancelEditMemo}
+                        disabled={updating}
+                        className="py-2 rounded-xl text-xs font-black bg-[var(--input-bg)] border border-[var(--card-border)] text-gray-500 hover:bg-gray-500/10 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1"
+                      >
+                        <X className="w-3.5 h-3.5" /> 취소
+                      </button>
+                      <button
+                        onClick={handleSaveEditMemo}
+                        disabled={updating}
+                        className="py-2 rounded-xl text-xs font-black bg-green-600 text-white hover:bg-green-700 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1"
+                      >
+                        <Check className="w-3.5 h-3.5" /> {updating ? "저장 중..." : "저장"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Note Content */}
+                    <div className="bg-white dark:bg-zinc-900 border border-amber-500/5 rounded-2xl p-4 text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed shadow-inner">
+                      {entry.content}
+                    </div>
+
+                    {/* Note Tags */}
+                    {entry.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {entry.tags.map(tag => (
+                          <span
+                            key={tag}
+                            onClick={() => setSelectedTag(tag)}
+                            className="cursor-pointer bg-amber-500/10 text-amber-700 dark:text-amber-500 border border-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded text-[9.5px] font-black transition-all"
+                          >
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Decorative Note Pin Effect */}
+                <div className="absolute top-0 right-1/2 translate-x-1/2 w-8 h-2.5 bg-amber-500/20 rounded-b-md shadow-sm border-x border-b border-amber-500/10 group-hover:bg-amber-500/30 transition-colors" />
               </div>
-
-              {/* Note Content */}
-              <div className="bg-white dark:bg-zinc-900 border border-amber-500/5 rounded-2xl p-4 text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed shadow-inner">
-                {entry.content}
-              </div>
-
-              {/* Note Tags */}
-              {entry.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {entry.tags.map(tag => (
-                    <span
-                      key={tag}
-                      onClick={() => setSelectedTag(tag)}
-                      className="cursor-pointer bg-amber-500/10 text-amber-700 dark:text-amber-500 border border-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded text-[9.5px] font-black transition-all"
-                    >
-                      #{tag}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* Decorative Note Pin Effect */}
-              <div className="absolute top-0 right-1/2 translate-x-1/2 w-8 h-2.5 bg-amber-500/20 rounded-b-md shadow-sm border-x border-b border-amber-500/10 group-hover:bg-amber-500/30 transition-colors" />
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

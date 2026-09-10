@@ -10,6 +10,10 @@ export class ImprovementNoteService {
         return firestoreRepo.addImprovementNote(data);
     }
 
+    async updateImprovementNote(id: string, updates: Partial<ImprovementNote>): Promise<void> {
+        return firestoreRepo.updateImprovementNote(id, updates);
+    }
+
     async deleteImprovementNote(id: string): Promise<void> {
         return firestoreRepo.deleteImprovementNote(id);
     }

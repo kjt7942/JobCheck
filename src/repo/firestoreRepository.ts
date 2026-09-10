@@ -315,6 +315,11 @@ export class FirestoreRepository {
     return docRef.id;
   }
 
+  async updateImprovementNote(id: string, updates: Partial<ImprovementNote>): Promise<void> {
+    const cleanedUpdates = this.cleanUndefined(updates);
+    await updateDoc(doc(this.improvementNotesCol, id), cleanedUpdates);
+  }
+
   async deleteImprovementNote(id: string): Promise<void> {
     await deleteDoc(doc(this.improvementNotesCol, id));
   }
