@@ -7,6 +7,7 @@ import { Job, ImprovementNote } from "@/types";
 import { Search, StickyNote, Tag, Calendar, AlertCircle, Plus, Trash2, PenLine, Pencil, Check, X } from "lucide-react";
 import { useApp } from "@/providers/AppProvider";
 import { improvementNoteService } from "@/services/improvementNoteService";
+import { jobService } from "@/services/jobService";
 
 interface NotesArchiveViewProps {
   tasks: Job[];
@@ -20,7 +21,8 @@ interface NoteEntry {
   date: number; // 정렬/표시용 timestamp
   content: string;
   tags: string[];
-  noteId?: string; // source === "note"일 때만 삭제에 사용
+  jobId?: string; // source === "job"일 때만 수정에 사용
+  noteId?: string; // source === "note"일 때만 수정/삭제에 사용
 }
 
 export default function NotesArchiveView({ tasks }: NotesArchiveViewProps) {
@@ -36,7 +38,7 @@ export default function NotesArchiveView({ tasks }: NotesArchiveViewProps) {
   const [memoTags, setMemoTags] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [editTags, setEditTags] = useState("");
   const [updating, setUpdating] = useState(false);
@@ -69,31 +71,38 @@ export default function NotesArchiveView({ tasks }: NotesArchiveViewProps) {
     }
   };
 
-  const startEditMemo = (note: ImprovementNote) => {
-    setEditingId(note.id!);
-    setEditContent(note.content);
-    setEditTags((note.tags || []).join(", "));
+  const startEditEntry = (entry: NoteEntry) => {
+    setEditingKey(entry.key);
+    setEditContent(entry.content);
+    setEditTags(entry.tags.join(", "));
   };
 
-  const cancelEditMemo = () => {
-    setEditingId(null);
+  const cancelEditEntry = () => {
+    setEditingKey(null);
     setEditContent("");
     setEditTags("");
   };
 
-  const handleSaveEditMemo = async () => {
+  const handleSaveEditEntry = async (entry: NoteEntry) => {
     if (!canWrite) { showToast("수정 권한이 없습니다.", "error"); return; }
-    if (!editContent.trim()) { showToast("메모 내용을 입력해 주세요.", "error"); return; }
-    if (updating || !editingId) return;
+    if (!editContent.trim()) { showToast("내용을 입력해 주세요.", "error"); return; }
+    if (updating) return;
     setUpdating(true);
     try {
       const tags = editTags.split(",").map(t => t.trim()).filter(t => t !== "");
-      await improvementNoteService.updateImprovementNote(editingId, {
-        content: editContent.trim(),
-        tags,
-      });
-      cancelEditMemo();
-      showToast("메모가 수정되었습니다.");
+      if (entry.source === "job") {
+        await jobService.updateJob(entry.jobId!, {
+          feedback: editContent.trim(),
+          feedback_tags: tags,
+        });
+      } else {
+        await improvementNoteService.updateImprovementNote(entry.noteId!, {
+          content: editContent.trim(),
+          tags,
+        });
+      }
+      cancelEditEntry();
+      showToast("수정되었습니다.");
     } catch {
       showToast("수정에 실패했습니다.", "error");
     } finally {
@@ -120,6 +129,7 @@ export default function NotesArchiveView({ tasks }: NotesArchiveViewProps) {
       date: new Date(job.date).getTime(),
       content: job.feedback!,
       tags: job.feedback_tags || [],
+      jobId: job.id,
     }));
 
   // 2. 독립 메모를 공통 형태로 변환
@@ -276,7 +286,7 @@ export default function NotesArchiveView({ tasks }: NotesArchiveViewProps) {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
           {filteredEntries.map((entry) => {
-            const isEditing = entry.source === "note" && editingId === entry.noteId;
+            const isEditing = editingKey === entry.key;
             return (
               <div
                 key={entry.key}
@@ -294,9 +304,9 @@ export default function NotesArchiveView({ tasks }: NotesArchiveViewProps) {
                       <Calendar className="w-3 h-3 text-gray-400" />
                       {format(new Date(entry.date), "yyyy-MM-dd", { locale: ko })}
                     </div>
-                    {entry.source === "note" && !isEditing && canWrite && (
+                    {!isEditing && canWrite && (
                       <button
-                        onClick={() => startEditMemo(notes.find(n => n.id === entry.noteId)!)}
+                        onClick={() => startEditEntry(entry)}
                         className="p-1 text-gray-400 hover:text-green-600 hover:bg-green-500/10 rounded-lg transition-all"
                         title="수정"
                       >
@@ -332,14 +342,14 @@ export default function NotesArchiveView({ tasks }: NotesArchiveViewProps) {
                     />
                     <div className="grid grid-cols-2 gap-2">
                       <button
-                        onClick={cancelEditMemo}
+                        onClick={cancelEditEntry}
                         disabled={updating}
                         className="py-2 rounded-xl text-xs font-black bg-[var(--input-bg)] border border-[var(--card-border)] text-gray-500 hover:bg-gray-500/10 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1"
                       >
                         <X className="w-3.5 h-3.5" /> 취소
                       </button>
                       <button
-                        onClick={handleSaveEditMemo}
+                        onClick={() => handleSaveEditEntry(entry)}
                         disabled={updating}
                         className="py-2 rounded-xl text-xs font-black bg-green-600 text-white hover:bg-green-700 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1"
                       >
