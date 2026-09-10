@@ -88,6 +88,17 @@ export interface FarmRecord {
 }
 
 /**
+ * 영농 개선 노트 (일정과 무관하게 바로 남기는 메모)
+ */
+export interface ImprovementNote {
+  id?: string;
+  content: string;
+  tags?: string[];
+  user_id: string;
+  created_at: number;
+}
+
+/**
  * 날짜별 공용 날씨 캐시 타입 (매일 새벽 Cron이 기상청 API로 채워넣음)
  */
 export interface DailyWeather {

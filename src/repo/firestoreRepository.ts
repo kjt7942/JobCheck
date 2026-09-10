@@ -16,7 +16,7 @@ import {
   limit
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { Job, UserSettings, DailyWeather, SprayRecord, FarmRecord } from "@/types";
+import { Job, UserSettings, DailyWeather, SprayRecord, FarmRecord, ImprovementNote } from "@/types";
 
 export class FirestoreRepository {
   private get jobsCol() {
@@ -47,6 +47,11 @@ export class FirestoreRepository {
   private get farmRecordsCol() {
     if (!db) throw new Error("Firebase가 초기화되지 않았습니다.");
     return collection(db, "farm_records");
+  }
+
+  private get improvementNotesCol() {
+    if (!db) throw new Error("Firebase가 초기화되지 않았습니다.");
+    return collection(db, "improvement_notes");
   }
 
   // --- Daily Weather (매일 새벽 Cron이 기록하는 날짜별 공용 날씨) ---
@@ -293,6 +298,25 @@ export class FirestoreRepository {
 
   async deleteFarmRecord(id: string): Promise<void> {
     await deleteDoc(doc(this.farmRecordsCol, id));
+  }
+
+  // --- Improvement Notes (일정과 무관한 영농 개선 메모) ---
+
+  subscribeImprovementNotes(callback: (notes: ImprovementNote[]) => void): () => void {
+    const q = query(this.improvementNotesCol, orderBy("created_at", "desc"));
+    return onSnapshot(q, (snapshot) => {
+      callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as ImprovementNote)));
+    });
+  }
+
+  async addImprovementNote(data: Omit<ImprovementNote, "id" | "created_at">): Promise<string> {
+    const cleaned = this.cleanUndefined({ ...data, created_at: Date.now() });
+    const docRef = await addDoc(this.improvementNotesCol, cleaned);
+    return docRef.id;
+  }
+
+  async deleteImprovementNote(id: string): Promise<void> {
+    await deleteDoc(doc(this.improvementNotesCol, id));
   }
 }
 

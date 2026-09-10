@@ -17,7 +17,7 @@
 - **기록부(FarmRecordsView) + 영수증 OCR**: 영수증/명세서 이미지를 Gemini Vision으로 인식해 날짜·분류·금액·메모 자동 입력, 인식 결과 확인 모달(전체화면 이미지 뷰어) 후 저장
 - **다중 이미지 업로드**: 무제한 다중 이미지 첨부, 클라이언트 압축(800px), 스켈레톤 UI, 모달 이미지 뷰어(스와이프/터치 영역 정밀 튜닝)
 - **영농 도구함(ToolsView)**: 농약 희석 계산기, 결로 예방 이슬점 계산, 수확 포장 계산기
-- **영농 개선 노트(NotesArchiveView)**: 오답노트 성격의 피드백 기록 아카이브
+- **영농 개선 노트(NotesArchiveView)**: 오답노트 성격의 피드백 기록 아카이브 + 일정과 무관하게 화면에서 바로 남기는 독립 메모(태그 포함, 삭제 가능), 일정 피드백과 통합 검색/태그 필터
 - **RBAC / 인증**: 관리자 승인 기반 사용자 관리, 권한별 기능 제어, 읽지 않은 알림, 로그인 화면(`LoginView`), 앱 비밀번호(`APP_PASSWORD`) 보호
 - **PWA**: `manifest.json` + 아이콘, 홈 화면 설치 지원
 - **다크모드 + 반응형**: 전체 화면 테마 시스템, 모바일/PC 레이아웃 최적화
@@ -32,7 +32,7 @@ src/
 ├─ components/        # DailyView / MonthlyView / YearlyView / FarmRecordsView /
 │                      # ToolsView / NotesArchiveView / LoginView / SettingsModal 등 UI
 ├─ providers/          # AppProvider — 전역 상태(로그인, 일정, 날씨 캐시) 공급
-├─ services/           # jobService / authService / adminService / farmRecordService / sprayService
+├─ services/           # jobService / authService / adminService / farmRecordService / sprayService / improvementNoteService
 ├─ repo/               # firestoreRepository — Firestore 데이터 접근 계층
 ├─ lib/                # firebase(client)/firebase-admin, weather, gemini, sprayWarning
 ├─ types/              # 도메인 타입
@@ -83,6 +83,7 @@ Firebase / Notion(레거시) / 기상청 / Gemini 관련 환경 변수(`NEXT_PUB
 | 2026-08-17 | Firebase Storage 보안 규칙 추가, 반복일정 삭제 중복 클릭 방지, 날씨 크론 KST 날짜 버그 수정, 코드리뷰 지적사항 반영 |
 | 2026-08-19 | 반복일정 중간 규칙 변경, **기록부(영수증 이미지 첨부)** 기능 추가, 날씨 폴백 표시 개선 |
 | 2026-08-20 | **영수증 Gemini OCR 자동입력**, 인식 결과 확인 모달(전체화면 이미지 뷰어), 중복 저장 버그 수정 |
+| 2026-09-10 | 영농 개선 노트에 **일정과 무관한 독립 메모 기능** 추가 — `improvement_notes` Firestore 컬렉션/보안 규칙 신설, `improvementNoteService`, 일정 피드백과 통합된 목록/태그/검색 |
 
 ## 스크린샷 / 데모
 
@@ -102,6 +103,7 @@ _(자리만 확보 — 캡처 준비되면 `public/screenshots/`에 넣고 아�
 - **날씨 크론의 KST 날짜 버그**: 서버 UTC 기준 날짜와 한국 시간 기준 날짜가 어긋나던 문제를 수정(`b68f1b6`).
 - **RBAC 도입 후 레거시 데이터 크래시**: 기존 사용자 데이터에 새 권한 필드가 없어 사용자 관리 화면이 크래시 → 누락 필드 방어 처리(`2ae3dac`).
 - **이미지 모달 깜빡임/터치 영역**: `key` prop으로 인한 리마운트가 전환 시 플래시를 유발 → key 제거 및 트랜지션 최적화, 터치 존을 여러 차례 정밀 튜닝(`Zone 4/6` 등)해서 스와이프 오작동을 줄였다.
+- **새 컬렉션 추가 시 규칙 미배포로 인한 permission-denied**: 새 컬렉션(`improvement_notes`)용 `firestore.rules`를 로컬에서 수정만 하고 `firebase deploy --only firestore:rules`를 하지 않으면 실제 프로젝트엔 반영되지 않아 Firestore가 조용히 `permission-denied`를 뱉는다. 배포 후에도 이미 열려 있던 `onSnapshot` 리스너는 에러가 난 채로 죽어 있어 재시도되지 않으므로, 새 페이지 로드(재구독)까지 해줘야 정상 동작을 확인할 수 있었다.
 
 ## 향후 계획
 
