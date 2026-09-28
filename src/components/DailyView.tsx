@@ -5,7 +5,7 @@ import { format, isSameDay, addDays, subDays, addMonths } from "date-fns";
 import { ko } from "date-fns/locale";
 import { Job } from "@/types";
 import { buildOverrideIndex, getTasksForDate, isVirtualId, type RecurringScope } from "@/lib/recurrence";
-import { Plus, Check, Trash2, Clock, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Activity, Edit2, X, Sun, CloudRain, Cloud, CloudSnow, RefreshCw, CalendarDays, Camera, Lock as LockIcon, Sprout, StickyNote } from "lucide-react";
+import { Plus, Check, Trash2, Clock, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Edit2, X, Sun, CloudRain, Cloud, CloudSnow, RefreshCw, CalendarDays, Camera, Lock as LockIcon, Sprout, StickyNote } from "lucide-react";
 import DatePicker, { registerLocale } from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { compressImage } from "@/utils/imageUtils";
@@ -248,7 +248,7 @@ export default function DailyView({
       (t.temp_max !== undefined && t.temp_max !== null && !isNaN(Number(t.temp_max))) ||
       (t.temp_min !== undefined && t.temp_min !== null && !isNaN(Number(t.temp_min)))
     );
-    return taskWithWeather ?? dailyWeather[format(viewDate, "yyyy-MM-dd")] ?? null;
+    return dailyWeather[format(viewDate, "yyyy-MM-dd")] ?? taskWithWeather ?? null; // 그날 수집 날씨 우선
   })();
 
   // 강수량: 일정에 없으면 그날 자동 수집 캐시(관측소 실측)로 폴백
@@ -679,6 +679,7 @@ export default function DailyView({
                           headerWeather.weather.includes("눈") ? <CloudSnow className="w-3.5 h-3.5 text-blue-300" /> :
                             <Cloud className="w-3.5 h-3.5" />
                   )}
+                  {headerWeather.weather}
                   {((headerWeather.temp_max !== undefined && headerWeather.temp_max !== null && !isNaN(Number(headerWeather.temp_max))) ||
                     (headerWeather.temp_min !== undefined && headerWeather.temp_min !== null && !isNaN(Number(headerWeather.temp_min)))) && (
                     <span className="font-mono">
@@ -699,7 +700,7 @@ export default function DailyView({
           </div>
 
           {/* 💡 스마트 영농 비서 실시간 날씨 조언 카드 */}
-          {!isFutureDate && viewTasks.some(t => t.weather === "비") && (
+          {headerWeather?.weather === "비" && viewTasks.length > 0 && (
             <div className="mb-4 bg-blue-500/10 border border-blue-500/20 p-4 rounded-2xl flex items-start gap-3 animate-in slide-in-from-top-2 duration-300">
               <CloudRain className="w-5 h-5 text-blue-500 shrink-0 mt-0.5 animate-bounce" />
               <div>
@@ -772,38 +773,6 @@ export default function DailyView({
                         {format(new Date(task.date), "HH:mm")}
                       </span>
 
-                      {/* Weather Info Display */}
-                      {!isFutureDate && (task.weather || (task.temp_max !== undefined && task.temp_max !== null) || (task.temp_min !== undefined && task.temp_min !== null)) && (
-                        <div className="flex items-center gap-1.5 text-[10px] text-green-600 font-medium bg-green-500/10 px-1.5 py-0.5 rounded whitespace-nowrap overflow-hidden">
-                          {task.weather && (
-                            <span className="flex items-center gap-1">
-                              {task.weather.includes("맑음") ? <Sun className="w-3 h-3" /> :
-                                task.weather.includes("비") ? <CloudRain className="w-3 h-3" /> :
-                                  task.weather.includes("흐림") ? <Cloud className="w-3 h-3" /> :
-                                    task.weather.includes("바람") ? <Activity className="w-3 h-3" /> :
-                                      task.weather.includes("눈") ? <CloudSnow className="w-3 h-3" /> :
-                                        <Cloud className="w-3 h-3" />}
-                              {task.weather}
-                            </span>
-                          )}
-                          {((task.temp_max !== undefined && task.temp_max !== null && !isNaN(Number(task.temp_max))) || 
-                            (task.temp_min !== undefined && task.temp_min !== null && !isNaN(Number(task.temp_min)))) && (
-                            <span className="flex items-center gap-1 border-l border-green-500/20 pl-1.5">
-                              {task.temp_max !== undefined && task.temp_max !== null && !isNaN(Number(task.temp_max)) && (
-                                <span className="text-red-400 hover:scale-110 transition-transform cursor-help">{task.temp_max}℃</span>
-                              )}
-                              {task.temp_max !== undefined && task.temp_max !== null && !isNaN(Number(task.temp_max)) && 
-                               task.temp_min !== undefined && task.temp_min !== null && !isNaN(Number(task.temp_min)) && (
-                                <span className="text-gray-400 opacity-50">/</span>
-                              )}
-                              {task.temp_min !== undefined && task.temp_min !== null && !isNaN(Number(task.temp_min)) && (
-                                <span className="text-blue-400 hover:scale-110 transition-transform cursor-help">{task.temp_min}℃</span>
-                              )}
-                            </span>
-                          )}
-                          {(task.rain_mm ?? 0) > 0 && <span className="border-l border-green-500/20 pl-1.5 text-sky-500">💧{task.rain_mm}mm</span>}
-                        </div>
-                      )}
                     </div>
                   </div>
 

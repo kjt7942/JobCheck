@@ -332,6 +332,9 @@ export default function MonthlyView({
     return selStr > todayStr;
   })();
 
+  // 선택한 날의 날씨 (일정별이 아니라 날짜 단위로 하나만 표시, 미래는 표시 안 함)
+  const selectedDayWeather = isSelectedDateFuture ? null : dailyWeather[format(selectedDate, "yyyy-MM-dd")] ?? null;
+
   // 💡 현재 달의 작년(1년 전 동월) 피드백 노트 수집
   const lastYearMonthlyFeedbacks = (() => {
     return tasks.filter(t => {
@@ -547,9 +550,24 @@ export default function MonthlyView({
       {/* Selected Day Tasks (선택한 날짜의 일정 목록 — 데스크톱에서도 체크/수정/삭제 가능하도록 항상 표시) */}
       <div className="space-y-4 animate-in slide-in-from-bottom-2 duration-300">
         <div className="flex items-center justify-between px-1">
-          <h3 className="font-bold text-gray-700 flex items-center gap-2">
+          <h3 className="font-bold text-[var(--foreground)] flex items-center gap-2 flex-wrap">
             <CalendarIcon className="w-4 h-4 text-green-600" />
             {format(selectedDate, "M월 d일")} 일정
+            {selectedDayWeather && (
+              <span className="flex items-center gap-1 text-[11px] font-bold text-green-600 bg-green-500/10 px-2 py-0.5 rounded-lg whitespace-nowrap">
+                {selectedDayWeather.weather.includes("맑음") ? <Sun className="w-3.5 h-3.5 text-amber-500" /> :
+                 selectedDayWeather.weather.includes("비") ? <CloudRain className="w-3.5 h-3.5 text-blue-500" /> :
+                 selectedDayWeather.weather.includes("눈") ? <CloudSnow className="w-3.5 h-3.5 text-blue-300" /> :
+                 <Cloud className="w-3.5 h-3.5 text-gray-500" />}
+                {selectedDayWeather.weather}
+                <span className="font-mono">
+                  <span className="text-red-400">{selectedDayWeather.temp_max}</span>
+                  <span className="text-gray-400 opacity-50 mx-0.5">/</span>
+                  <span className="text-blue-400">{selectedDayWeather.temp_min}</span>℃
+                </span>
+                {(selectedDayWeather.rain_mm ?? 0) > 0 && <span className="font-mono text-sky-500">💧{selectedDayWeather.rain_mm}mm</span>}
+              </span>
+            )}
           </h3>
           <span className="text-xs text-gray-400 font-medium">총 {selectedDayTasks.length}건</span>
         </div>
@@ -598,32 +616,6 @@ export default function MonthlyView({
                     )}
                   </p>
                 </div>
-                {!isSelectedDateFuture && (task.weather || 
-                  (task.temp_max !== undefined && task.temp_max !== null && !isNaN(Number(task.temp_max))) || 
-                  (task.temp_min !== undefined && task.temp_min !== null && !isNaN(Number(task.temp_min)))) && (
-                  <div className="flex flex-col items-end gap-0.5 text-[10px] bg-green-500/10 text-green-600 px-2.5 py-1 rounded-xl font-bold shrink-0">
-                    {task.weather && (
-                      <span className="flex items-center gap-0.5">
-                        {task.weather.includes("맑음") ? <Sun className="w-3 h-3 text-amber-500 shrink-0" /> :
-                         task.weather.includes("비") ? <CloudRain className="w-3 h-3 text-blue-500 shrink-0" /> :
-                         task.weather.includes("흐림") ? <Cloud className="w-3 h-3 text-gray-500 shrink-0" /> :
-                         task.weather.includes("눈") ? <CloudSnow className="w-3 h-3 text-blue-300 shrink-0" /> :
-                         <Cloud className="w-3 h-3 shrink-0" />}
-                        {task.weather}
-                      </span>
-                    )}
-                    {((task.temp_max !== undefined && task.temp_max !== null && !isNaN(Number(task.temp_max))) || 
-                      (task.temp_min !== undefined && task.temp_min !== null && !isNaN(Number(task.temp_min)))) && (
-                      <span className="flex items-center font-mono text-[9px] mt-0.5">
-                        {task.temp_max !== undefined && task.temp_max !== null && !isNaN(Number(task.temp_max)) && <span className="text-red-400">{task.temp_max}℃</span>}
-                        {task.temp_max !== undefined && task.temp_max !== null && !isNaN(Number(task.temp_max)) && 
-                         task.temp_min !== undefined && task.temp_min !== null && !isNaN(Number(task.temp_min)) && <span className="text-gray-400 opacity-50 mx-0.5">/</span>}
-                        {task.temp_min !== undefined && task.temp_min !== null && !isNaN(Number(task.temp_min)) && <span className="text-blue-400">{task.temp_min}℃</span>}
-                      </span>
-                    )}
-                    {(task.rain_mm ?? 0) > 0 && <span className="font-mono text-[9px] mt-0.5 ml-1 text-sky-500">💧{task.rain_mm}mm</span>}
-                  </div>
-                )}
                 {/* 모바일 액션 단추 (수정/삭제) */}
                 <div className="flex items-center gap-1 shrink-0 ml-1">
                   {canWrite && (
