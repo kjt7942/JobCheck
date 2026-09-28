@@ -759,7 +759,7 @@ export default function DailyView({
                       ℃
                     </span>
                   )}
-                  {typeof headerRain === "number" && <span className="font-mono text-sky-500">💧{headerRain}mm</span>}
+                  {(headerRain ?? 0) > 0 && <span className="font-mono text-sky-500">💧{headerRain}mm</span>}
                 </span>
               )}
               <div className="text-[11px] font-bold text-gray-400 bg-[var(--input-bg)] px-2 py-1 rounded-lg">
@@ -871,7 +871,7 @@ export default function DailyView({
                               )}
                             </span>
                           )}
-                          {typeof task.rain_mm === "number" && <span className="border-l border-green-500/20 pl-1.5 text-sky-500">💧{task.rain_mm}mm</span>}
+                          {(task.rain_mm ?? 0) > 0 && <span className="border-l border-green-500/20 pl-1.5 text-sky-500">💧{task.rain_mm}mm</span>}
                         </div>
                       )}
                     </div>
