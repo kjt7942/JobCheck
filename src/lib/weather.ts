@@ -174,3 +174,85 @@ export function toWeatherLabel(sky: string, pty: string, wsd?: string): string {
   if (sky === "3" || sky === "4") return "흐림"; // 구름많음, 흐림
   return "맑음";
 }
+
+// 문경 종관기상관측소(ASOS) 지점번호 — 농장(산양면)에서 가장 가까운 기상청 관측소
+export const FARM_ASOS_STN = 273;
+
+export interface AsosDaily {
+  date: string;         // YYYY-MM-DD
+  weather: string;      // 맑음/흐림/비/눈
+  temp_max: number;
+  temp_min: number;
+  raw_sky: string;      // 운량으로 환산한 SKY 코드 (1 맑음, 3 구름많음, 4 흐림)
+  raw_pty: string;      // 0 없음, 1 비, 3 눈
+  rain_mm: number;      // 일강수량 (mm)
+}
+
+/**
+ * 기상청 ASOS 일자료(kma_sfcdd3) 한 줄을 앱 날씨로 변환 (실측값이 없으면 null)
+ * 판정: 신적설>0 또는 영하에 1mm 이상 강수 → 눈 / 일강수량 1mm 이상 → 비 / 평균운량 6할 이상 → 흐림 / 그 외 맑음
+ * ponytail: 1mm 미만 약한 비는 "비"로 치지 않음 — 기준을 바꾸려면 RAIN_MM만 조정
+ */
+export function parseAsosDailyLine(line: string): AsosDaily | null {
+  const RAIN_MM = 1.0;
+  const c = line.trim().split(/\s+/);
+  if (c.length < 48 || !/^\d{8}$/.test(c[0])) return null;
+  // 결측: 강수/운량/적설 같은 0 이상 값은 음수(-9), 기온은 -99 (영하 9도 이하 실제 기온과 구분)
+  const amount = (i: number) => { const v = parseFloat(c[i]); return isNaN(v) || v < 0 ? null : v; };
+  const temp = (i: number) => { const v = parseFloat(c[i]); return isNaN(v) || v <= -50 ? null : v; };
+  const taAvg = temp(10), taMax = temp(11), taMin = temp(13), ca = amount(31), rn = amount(38), sdNew = amount(47);
+  if (taMax === null || taMin === null) return null;
+
+  const rain = rn ?? 0;
+  const snow = (sdNew ?? 0) > 0 || (rain >= RAIN_MM && taAvg !== null && taAvg <= 0);
+  const sky = ca === null ? "1" : ca >= 9 ? "4" : ca >= 6 ? "3" : "1";
+  const pty = snow ? "3" : rain >= RAIN_MM ? "1" : "0";
+  return {
+    date: `${c[0].slice(0, 4)}-${c[0].slice(4, 6)}-${c[0].slice(6, 8)}`,
+    weather: toWeatherLabel(sky, pty),
+    temp_max: taMax,
+    temp_min: taMin,
+    raw_sky: sky,
+    raw_pty: pty,
+    rain_mm: rain,
+  };
+}
+
+/**
+ * 기상청 ASOS 일자료 조회 (from~to, YYYY-MM-DD). 관측 완료된 과거 날짜만 제공됨.
+ */
+export async function getAsosDaily(from: string, to: string, stn: number = FARM_ASOS_STN): Promise<AsosDaily[]> {
+  const authKey = process.env.KMA_AUTH_KEY;
+  if (!authKey) throw new Error("KMA_AUTH_KEY 환경변수가 설정되지 않았습니다.");
+  const url = `https://apihub.kma.go.kr/api/typ01/url/kma_sfcdd3.php?tm1=${from.replace(/-/g, "")}&tm2=${to.replace(/-/g, "")}&stn=${stn}&help=0&authKey=${authKey}`;
+  // API허브가 간헐적으로 응답을 멈추는 경우가 있어 짧은 타임아웃으로 최대 3회 시도
+  let text = "";
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      if (!res.ok) throw new Error(`ASOS 일자료 HTTP ${res.status}`);
+      text = await res.text();
+      break;
+    } catch (e) {
+      if (attempt >= 3) throw e;
+    }
+  }
+  if (text.includes('"status"')) throw new Error(`ASOS 일자료 오류: ${text.slice(0, 200)}`);
+  return text.split("\n").map(parseAsosDailyLine).filter((d): d is AsosDaily => d !== null);
+}
+
+// 간단 자체검증: node --experimental-strip-types src/lib/weather.ts
+if (typeof process !== "undefined" && process.argv?.[1]?.endsWith("weather.ts")) {
+  const row = (ta: string, max: string, min: string, ca: string, rn: string, sd: string) => {
+    const c = Array(56).fill("-9.0");
+    c[0] = "20260101"; c[1] = "273"; c[10] = ta; c[11] = max; c[13] = min; c[31] = ca; c[38] = rn; c[47] = sd;
+    return c.join(" ");
+  };
+  console.assert(parseAsosDailyLine(row("-7.1", "-2.8", "-11.0", "2.0", "-9.0", "-9.0"))?.temp_min === -11, "영하 11도는 실제값");
+  console.assert(parseAsosDailyLine(row("-7.1", "-99.0", "-11.0", "2.0", "-9.0", "-9.0")) === null, "-99 기온은 결측");
+  console.assert(parseAsosDailyLine(row("20", "25", "15", "8.1", "3.1", "-9.0"))?.weather === "비", "3.1mm → 비");
+  console.assert(parseAsosDailyLine(row("20", "25", "15", "8.1", "0.5", "-9.0"))?.weather === "흐림", "0.5mm + 운량 8 → 흐림");
+  console.assert(parseAsosDailyLine(row("-2", "1", "-5", "9.5", "2.0", "1.2"))?.weather === "눈", "신적설 → 눈");
+  console.assert(parseAsosDailyLine(row("15", "20", "10", "3.0", "-9.0", "-9.0"))?.weather === "맑음", "맑음");
+  console.log("weather self-check done");
+}

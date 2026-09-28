@@ -109,4 +109,6 @@ export interface DailyWeather {
   raw_sky: string;      // 기상청 SKY 코드 (원본)
   raw_pty: string;      // 기상청 PTY 코드 (원본)
   fetched_at: number;   // 조회 시각 (timestamp)
+  source?: string;      // "forecast"(기상청 단기예보) | "asos_273"(문경 관측소 실측)
+  rain_mm?: number;     // 일강수량 (실측일 때만)
 }
