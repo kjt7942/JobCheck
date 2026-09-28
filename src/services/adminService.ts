@@ -3,6 +3,9 @@ import { firestoreRepo } from "@/repo/firestoreRepository";
 import { db } from "@/lib/firebase";
 import { collection, addDoc } from "firebase/firestore";
 
+// 사용자 입력(이름/이메일)을 메일 HTML에 넣기 전 이스케이프
+const escapeHtml = (v: string) => v.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+
 export class AdminService {
     /**
      * 모든 사용자 리스트를 가져옵니다.
@@ -63,8 +66,8 @@ export class AdminService {
                         <h3>관리자 승격 알림</h3>
                         <p>다음 사용자가 관리자로 승격되었습니다.</p>
                         <ul>
-                            <li>대상: ${user.user_name} (${user.email})</li>
-                            <li>승인자: ${promoterEmail}</li>
+                            <li>대상: ${escapeHtml(user.user_name)} (${escapeHtml(user.email)})</li>
+                            <li>승인자: ${escapeHtml(promoterEmail)}</li>
                             <li>일시: ${new Date().toLocaleString()}</li>
                         </ul>
                     `

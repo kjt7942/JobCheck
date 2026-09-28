@@ -24,17 +24,34 @@ export const uploadImagesToStorage = async (folderPath: string, files: File[]): 
 /**
  * 지정 폴더의 모든 이미지를 Storage에서 삭제합니다.
  */
-export const deleteFolderImages = async (folderPath: string): Promise<void> => {
+export const deleteFolderImages = async (folderPath: string, keepUrls: string[] = []): Promise<void> => {
   if (!storage) return;
   try {
+    // 다른 문서가 아직 참조 중인 파일(예: 반복 일정 분할 후 새 마스터가 쓰는 사진)은 남겨둠
+    const keepPaths = new Set(keepUrls.map(storagePathOf));
     const res = await listAll(ref(storage, folderPath));
-    await Promise.all(res.items.map(item => deleteObject(item)));
+    await Promise.all(res.items.filter(item => !keepPaths.has(item.fullPath)).map(item => deleteObject(item)));
   } catch (error) {
     console.warn(`Storage 이미지 삭제 중 오류 (${folderPath}):`, error);
   }
 };
 
-export const compressImage = async (file: File, maxSizeMB: number = 1): Promise<File> => {
+/** 다운로드 URL → Storage 경로 (파싱 불가면 빈 문자열) */
+export const storagePathOf = (url: string): string => {
+  try {
+    return ref(storage, url).fullPath;
+  } catch {
+    return "";
+  }
+};
+
+/** 다운로드 URL 목록의 파일을 삭제 (이미 없는 파일 등 실패는 무시) */
+export const deleteImagesByUrl = async (urls: string[]): Promise<void> => {
+  if (!storage) return;
+  await Promise.all(urls.map(url => deleteObject(ref(storage, url)).catch(() => {})));
+};
+
+export const compressImage = async (file: File): Promise<File> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);

@@ -2,11 +2,14 @@ import { useState, useEffect, useMemo } from "react";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths } from "date-fns";
 import { ko } from "date-fns/locale";
 import { Job } from "@/types";
-import { Plus, Check, Trash2, Clock, Calendar as CalendarIcon, CheckCircle2, ChevronLeft, ChevronRight, Activity, Search, Edit2, X, Save, Sun, CloudRain, Cloud, CloudSnow, RefreshCw, CalendarDays, CalendarRange, Camera, StickyNote } from "lucide-react";
+import { buildOverrideIndex, getTasksForDate as getTasksForDateShared, isVirtualId, type RecurringScope } from "@/lib/recurrence";
+import { Check, Trash2, Clock, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Activity, Edit2, X, Sun, CloudRain, Cloud, CloudSnow, RefreshCw, CalendarRange, Camera, StickyNote } from "lucide-react";
 import DatePicker, { registerLocale } from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { compressImage } from "@/utils/imageUtils";
+import { authFetch } from "@/lib/firebase";
 import { useApp } from "@/providers/AppProvider";
+import { FARM_LAT, FARM_LNG } from "@/lib/weather";
 
 registerLocale("ko", ko);
 
@@ -20,11 +23,9 @@ const ImageWithSkeleton = ({ src, alt, className, onClick, onTouchStart, onTouch
   onTouchMove?: React.TouchEventHandler,
   onTouchEnd?: React.TouchEventHandler
 }) => {
-  const [isLoaded, setIsLoaded] = useState(false);
-
-  useEffect(() => {
-    setIsLoaded(false);
-  }, [src]);
+  // 현재 src의 로딩 완료 여부 (src가 바뀌면 자동으로 미완료 상태가 됨)
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
+  const isLoaded = loadedSrc === src;
 
   return (
     <div className={`relative overflow-hidden ${className}`}>
@@ -34,7 +35,7 @@ const ImageWithSkeleton = ({ src, alt, className, onClick, onTouchStart, onTouch
       <img
         src={src}
         alt={alt}
-        onLoad={() => setIsLoaded(true)}
+        onLoad={() => setLoadedSrc(src)}
         className={`w-full h-full object-cover transition-opacity duration-500 ${isLoaded ? "opacity-100" : "opacity-0"}`}
         onClick={onClick}
         onTouchStart={onTouchStart}
@@ -48,7 +49,6 @@ const ImageWithSkeleton = ({ src, alt, className, onClick, onTouchStart, onTouch
 export default function MonthlyView({
   tasks,
   farmInfo,
-  onAdd,
   onToggle,
   onDelete,
   onUpdate,
@@ -56,28 +56,14 @@ export default function MonthlyView({
   canDelete = false,
 }: {
   tasks: Job[];
-  farmInfo: any;
-  onAdd: (
-    task: string, 
-    date: string, 
-    weather?: string, 
-    temp_max?: string | number, 
-    temp_min?: string | number, 
-    group_id?: string, 
-    imageFiles?: File[],
-    recurrence?: any,
-    is_instance?: boolean,
-    instance_date?: string,
-    is_cancelled?: boolean,
-    is_done?: boolean
-  ) => void;
+  farmInfo: { name?: string; weekStartsOn?: number };
   onToggle: (id: string, is_done: boolean) => void;
   onDelete: (id: string) => void;
-  onUpdate: (id: string, updates: Partial<Job>, newImageFiles?: File[]) => void;
+  onUpdate: (id: string, updates: Partial<Job>, newImageFiles?: File[], scope?: RecurringScope) => void;
   canWrite?: boolean;
   canDelete?: boolean;
 }) {
-  const { settings, dailyWeather } = useApp();
+  const { settings, dailyWeather, showToast } = useApp();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedImageInfo, setSelectedImageInfo] = useState<{ urls: string[], index: number } | null>(null);
@@ -104,15 +90,18 @@ export default function MonthlyView({
   const [pendingUpdates, setPendingUpdates] = useState<Partial<Job> | null>(null);
   const [pendingNewImageFiles, setPendingNewImageFiles] = useState<File[] | undefined>(undefined);
 
-  // 🚀 가상 일정 삭제 중복 클릭 방지 (Firestore 왕복 전 즉시 로컬 숨김)
-  const [pendingCancelIds, setPendingCancelIds] = useState<Set<string>>(new Set());
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
+    e.target.value = ""; // 같은 사진을 다시 골라도 onChange가 동작하도록 초기화
     if (files.length === 0) return;
-    const compressedFiles = await Promise.all(
-      files.map(file => compressImage(file))
-    );
+    let compressedFiles: File[];
+    try {
+      compressedFiles = await Promise.all(files.map(file => compressImage(file)));
+    } catch {
+      showToast("사진을 불러오지 못했습니다. 다른 사진(JPG/PNG)으로 시도해 주세요.", "error");
+      return;
+    }
     const newPreviews = compressedFiles.map(file => URL.createObjectURL(file));
     setEditImageFiles(prev => [...prev, ...compressedFiles]);
     setEditImagePreviews(prev => [...prev, ...newPreviews]);
@@ -133,8 +122,8 @@ export default function MonthlyView({
     setEditTitle(job.task);
     setEditDate(new Date(job.date));
     setEditWeather(job.weather || "맑음");
-    setEditTmx(job.temp_max ? String(job.temp_max) : "");
-    setEditTmn(job.temp_min ? String(job.temp_min) : "");
+    setEditTmx(job.temp_max != null && !isNaN(Number(job.temp_max)) ? String(job.temp_max) : "");
+    setEditTmn(job.temp_min != null && !isNaN(Number(job.temp_min)) ? String(job.temp_min) : "");
     setEditImageFiles([]);
     setEditImagePreviews([]);
     setEditExistingUrls(job.image_urls || []);
@@ -158,20 +147,14 @@ export default function MonthlyView({
     setEditRecurrence(null);
   };
 
-  // 가상 일정 id("마스터ID.YYYY-MM-DD")에서 인스턴스 날짜를 로컬 타임존 기준으로 안전하게 파싱
-  const parseInstanceDate = (instDate: string, hours: number, minutes: number) => {
-    const [y, m, d] = instDate.split('-').map(Number);
-    return new Date(y, m - 1, d, hours, minutes);
-  };
-
   const handleSaveEdit = (id: string) => {
     if (!editTitle.trim() || !editDate) return;
     const updates = {
       task: editTitle.trim(),
       date: editDate.toISOString(),
       weather: editWeather,
-      temp_max: editTmx ? parseFloat(editTmx) : undefined,
-      temp_min: editTmn ? parseFloat(editTmn) : undefined,
+      temp_max: editTmx ? parseFloat(editTmx) : null, // 빈칸이면 기존 값 삭제
+      temp_min: editTmn ? parseFloat(editTmn) : null,
       image_urls: editExistingUrls,
       feedback: editFeedback.trim() || "",
       feedback_tags: editFeedbackTags
@@ -180,7 +163,7 @@ export default function MonthlyView({
       ...(editRecurrence ? { recurrence: editRecurrence } : {})
     };
 
-    if (id.includes('.')) {
+    if (isVirtualId(id)) {
       // 가상 일정 수정을 저장할 때는 팝업을 먼저 오픈해 사용자 선택을 유도함
       setPendingUpdateId(id);
       setPendingUpdates(updates);
@@ -188,161 +171,14 @@ export default function MonthlyView({
       setShowRecurrenceUpdateModal(true);
     } else {
       // 일반 단발성 일정일 때는 아무런 대화상자 없이 바로 진행
-      handleUpdateClick(id, updates, editImageFiles);
+      onUpdate(id, updates, editImageFiles);
       setEditingId(null);
     }
   };
 
-  // 🚀 CRUD 가로채기(Interceptor) 함수들 (가상 일정을 실제 인스턴스 문서로 변환)
-  const handleToggleClick = (id: string, is_done: boolean) => {
-    if (id.includes('.')) {
-      // 1. 가상 일정의 토글 -> 실제 변경 인스턴스 문서를 DB에 신규 작성
-      const [masterId, instDate] = id.split('.');
-      const masterTask = tasks.find(t => t.id === masterId);
-      if (masterTask) {
-        const masterStartDate = new Date(masterTask.date);
-        // 그날의 자동 수집된 날씨 캐시가 있으면 마스터의 정적 기본값 대신 사용 (매일 수동 업데이트 불필요)
-        const cachedWeather = dailyWeather[instDate];
-        onAdd(
-          masterTask.task,
-          parseInstanceDate(instDate, masterStartDate.getHours(), masterStartDate.getMinutes()).toISOString(),
-          cachedWeather?.weather ?? masterTask.weather ?? "",
-          cachedWeather?.temp_max ?? masterTask.temp_max,
-          cachedWeather?.temp_min ?? masterTask.temp_min,
-          masterTask.group_id,
-          undefined, // 이미지 파일 없음
-          undefined, // recurrence 없음
-          true,      // is_instance = true
-          instDate,  // instance_date = instDate
-          false,     // is_cancelled = false
-          is_done    // 🆕 완료 여부 즉시 저장
-        );
-      }
-    } else {
-      // 2. 일반 일정 토글
-      onToggle(id, is_done);
-    }
-  };
-
-  const handleDeleteClick = (id: string) => {
-    if (id.includes('.')) {
-      if (pendingCancelIds.has(id)) return; // 중복 클릭 방지 (Firestore 왕복 대기 중)
-
-      // 1. 가상 일정의 단일 삭제 -> is_cancelled = true 인 인스턴스를 하나 DB에 씀
-      const [masterId, instDate] = id.split('.');
-      const masterTask = tasks.find(t => t.id === masterId);
-      if (masterTask) {
-        setPendingCancelIds(prev => new Set(prev).add(id)); // 즉시 로컬 숨김
-        const masterStartDate = new Date(masterTask.date);
-        onAdd(
-          masterTask.task,
-          parseInstanceDate(instDate, masterStartDate.getHours(), masterStartDate.getMinutes()).toISOString(),
-          masterTask.weather || "",
-          masterTask.temp_max,
-          masterTask.temp_min,
-          masterTask.group_id,
-          undefined,
-          undefined,
-          false,
-          instDate,
-          true // is_cancelled = true
-        );
-      }
-    } else {
-      // 2. 일반 일정 삭제
-      onDelete(id);
-    }
-  };
-
-  const handleUpdateClick = (id: string, updates: Partial<Job>, newImageFiles?: File[]) => {
-    if (id.includes('.')) {
-      // 1. 가상 일정의 정보 수정 -> 수정된 값을 기반으로 신규 인스턴스 작성
-      const [masterId, instDate] = id.split('.');
-      const masterTask = tasks.find(t => t.id === masterId);
-      if (masterTask) {
-        const masterStartDate = new Date(masterTask.date);
-        onAdd(
-          updates.task || masterTask.task,
-          updates.date || parseInstanceDate(instDate, masterStartDate.getHours(), masterStartDate.getMinutes()).toISOString(),
-          updates.weather !== undefined ? updates.weather : masterTask.weather,
-          updates.temp_max !== undefined ? Number(updates.temp_max) : masterTask.temp_max,
-          updates.temp_min !== undefined ? Number(updates.temp_min) : masterTask.temp_min,
-          masterTask.group_id,
-          newImageFiles,
-          undefined,
-          true, // is_instance = true
-          instDate,
-          false // is_cancelled = false
-        );
-      }
-    } else {
-      // 2. 일반 일정 수정
-      onUpdate(id, updates, newImageFiles);
-    }
-  };
-
-  const handleRecurrenceUpdateOption = (option: "single" | "all" | "following") => {
+  const handleRecurrenceUpdateOption = (option: RecurringScope) => {
     if (!pendingUpdateId || !pendingUpdates) return;
-
-    const [masterId, instDate] = pendingUpdateId.split('.');
-    const masterTask = tasks.find(t => t.id === masterId);
-
-    if (!masterTask) return;
-
-    if (option === "single") {
-      // 1. 이 일정만 수정
-      handleUpdateClick(pendingUpdateId, pendingUpdates, pendingNewImageFiles);
-    } else if (option === "all") {
-      // 2. 전체 반복 일정(마스터) 수정
-      const originalMasterDate = new Date(masterTask.date);
-
-      if (pendingUpdates.date) {
-        const editDateTime = new Date(pendingUpdates.date);
-        originalMasterDate.setHours(editDateTime.getHours());
-        originalMasterDate.setMinutes(editDateTime.getMinutes());
-      }
-
-      const masterUpdates = {
-        ...pendingUpdates,
-        date: originalMasterDate.toISOString()
-      };
-
-      onUpdate(masterId, masterUpdates, pendingNewImageFiles);
-    } else if (option === "following") {
-      // 3. 이 일정과 이후 일정 일괄 수정
-      // 3-1. 기존 마스터의 종료일을 이 인스턴스 직전일(어제)로 단축하여 마스터 자르기
-      const targetDate = parseInstanceDate(instDate, 0, 0);
-      const yesterday = new Date(targetDate.getTime() - 24 * 60 * 60 * 1000);
-
-      const prevRecurrence = {
-        type: masterTask.recurrence!.type,
-        interval: masterTask.recurrence!.interval || 1,
-        end_date: yesterday.toISOString()
-      };
-
-      // 기존 마스터 일정의 반복 범위를 과거로 잘라서 업데이트
-      onUpdate(masterId, { recurrence: prevRecurrence });
-
-      // 3-2. 이 인스턴스 날짜부터 기존 종료일까지의 신규 마스터 일정을 추가 발행
-      const newGroupId = `rec_${Date.now()}`;
-      const newRecurrence = {
-        type: pendingUpdates.recurrence?.type || masterTask.recurrence!.type,
-        interval: pendingUpdates.recurrence?.interval || masterTask.recurrence!.interval || 1,
-        end_date: masterTask.recurrence!.end_date // 원래 기존 마스터의 종료일까지 유지
-      };
-
-      const masterStartDate = new Date(masterTask.date);
-      onAdd(
-        pendingUpdates.task || masterTask.task,
-        pendingUpdates.date || parseInstanceDate(instDate, masterStartDate.getHours(), masterStartDate.getMinutes()).toISOString(),
-        pendingUpdates.weather !== undefined ? pendingUpdates.weather : masterTask.weather,
-        pendingUpdates.temp_max !== undefined ? Number(pendingUpdates.temp_max) : masterTask.temp_max,
-        pendingUpdates.temp_min !== undefined ? Number(pendingUpdates.temp_min) : masterTask.temp_min,
-        newGroupId,
-        pendingNewImageFiles,
-        newRecurrence
-      );
-    }
+    onUpdate(pendingUpdateId, pendingUpdates, pendingNewImageFiles, option);
 
     // 펜딩 리셋 및 닫기
     setPendingUpdateId(null);
@@ -476,131 +312,15 @@ export default function MonthlyView({
     };
   }, [selectedImageInfo]);
 
-  // 🚀 월간 달력용 실시간 가상 일정 복원 렌더링 엔진 (오버라이드, 취소 필터링 완벽 적용)
-  // 인스턴스/취소 인덱스는 tasks가 바뀔 때만 재계산 (달력 셀마다 매번 재구성하지 않도록 메모이제이션)
-  const instancesByGroupDate = useMemo(() => {
-    const map = new Map<string, Job>();
-    tasks.forEach(t => {
-      if (t.is_instance && t.instance_date) {
-        map.set(`${t.group_id}_${t.instance_date}`, t);
-      }
-    });
-    return map;
-  }, [tasks]);
-
-  const cancelledByGroupDate = useMemo(() => {
-    const set = new Set<string>();
-    tasks.forEach(t => {
-      if (t.is_cancelled && t.instance_date) {
-        set.add(`${t.group_id}_${t.instance_date}`);
-      }
-    });
-    return set;
-  }, [tasks]);
-
-  const getTasksForDate = (targetDate: Date) => {
-    const list: Job[] = [];
-    const targetDateStr = format(targetDate, "yyyy-MM-dd");
-
-    // 2. 전체 DB 데이터를 순회하며 오늘 보여줄 일정 계산
-    tasks.forEach(t => {
-      // 2-1. 개별 변경된 인스턴스나 삭제 기록은 직접 삽입 보류
-      // -> 단, 날짜가 수정된 단독 인스턴스는 날짜가 맞으면 보여줘야 함!
-      if (t.is_instance || t.is_cancelled) {
-        if (t.is_instance && !t.is_cancelled && format(new Date(t.date), "yyyy-MM-dd") === targetDateStr) {
-          if (!list.some(existing => existing.id === t.id)) {
-            list.push(t);
-          }
-        }
-        return;
-      }
-
-      // 2-2. 일반 일정 (반복 설정이 없음) -> 단순 날짜 비교 (타임존 오류 원천 차단)
-      if (!t.recurrence) {
-        if (format(new Date(t.date), "yyyy-MM-dd") === targetDateStr) {
-          list.push(t);
-        }
-        return;
-      }
-
-      // 2-3. 반복 마스터 일정 -> 동적 가상 일정 연산
-      const masterStartDate = new Date(t.date);
-      const masterEndDate = new Date(t.recurrence.end_date);
-      
-      // 조회일이 반복 범위(시작일~종료일) 밖이면 노출 대상 아님
-      const viewDateOnly = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
-      const startDateOnly = new Date(masterStartDate.getFullYear(), masterStartDate.getMonth(), masterStartDate.getDate());
-      const endDateOnly = new Date(masterEndDate.getFullYear(), masterEndDate.getMonth(), masterEndDate.getDate());
-
-      if (viewDateOnly < startDateOnly || viewDateOnly > endDateOnly) {
-        return;
-      }
-
-      // 예외 인스턴스(오늘 날짜에 삭제된 건이 있는지) 체크
-      const key = `${t.group_id}_${targetDateStr}`;
-      if (cancelledByGroupDate.has(key)) {
-        return; // 삭제 처리 완료 -> 화면 노출 건너뜀
-      }
-
-      // 가상 일정 오버라이드 체크 (이미 값을 수정해서 실제 인스턴스로 바뀐 게 있는지)
-      const instanceOverride = instancesByGroupDate.get(key);
-      if (instanceOverride) {
-        // 단, 인스턴스의 실제 날짜가 오늘(targetDateStr)과 같을 때만 오늘 리스트에 담는다!
-        if (format(new Date(instanceOverride.date), "yyyy-MM-dd") === targetDateStr) {
-          list.push(instanceOverride);
-        }
-        return;
-      }
-
-      // 주기에 따라 오늘 렌더링할 것인지 수학적 연산
-      let shouldRender = false;
-      const diffDays = Math.floor((viewDateOnly.getTime() - startDateOnly.getTime()) / (1000 * 60 * 60 * 24));
-      
-      if (diffDays >= 0) {
-        const type = t.recurrence.type;
-        const interval = t.recurrence.interval || 1;
-
-        if (type === "DAILY") {
-          shouldRender = (diffDays % interval === 0);
-        } else if (type === "WEEKLY") {
-          shouldRender = (diffDays % (7 * interval) === 0);
-        } else if (type === "BIWEEKLY") {
-          shouldRender = (diffDays % (14 * interval) === 0);
-        } else if (type === "MONTHLY") {
-          const targetMonthDays = (viewDateOnly.getFullYear() - startDateOnly.getFullYear()) * 12 + (viewDateOnly.getMonth() - startDateOnly.getMonth());
-          shouldRender = (targetMonthDays % interval === 0 && viewDateOnly.getDate() === startDateOnly.getDate());
-        } else if (type === "CUSTOM") {
-          shouldRender = (diffDays % interval === 0);
-        }
-      }
-
-      if (shouldRender) {
-        // 가상 일정 렌더링용 객체 조립 (가상 ID 생성)
-        const virtualId = `${t.id}.${targetDateStr}`;
-        if (pendingCancelIds.has(virtualId)) return; // 삭제 요청 후 Firestore 왕복 전까지 즉시 숨김
-
-        // 그날의 자동 수집된 날씨 캐시가 있으면 마스터의 정적 기본값 대신 사용 (매일 수동 업데이트 불필요)
-        const cachedWeather = dailyWeather[targetDateStr];
-        list.push({
-          ...t,
-          id: virtualId, // virtual id
-          date: new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), masterStartDate.getHours(), masterStartDate.getMinutes()).toISOString(),
-          instance_date: targetDateStr,
-          weather: cachedWeather?.weather ?? t.weather,
-          temp_max: cachedWeather?.temp_max ?? t.temp_max,
-          temp_min: cachedWeather?.temp_min ?? t.temp_min
-        });
-      }
-    });
-
-    return list.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  };
+  // 🚀 반복 일정 엔진(lib/recurrence) — 오버라이드 인덱스는 tasks가 바뀔 때만 재계산
+  const overrideIndex = useMemo(() => buildOverrideIndex(tasks), [tasks]);
+  const getTasksForDate = (day: Date) => getTasksForDateShared(tasks, day, overrideIndex, dailyWeather);
 
   const startDay = farmInfo?.weekStartsOn ?? 1;
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(monthStart);
-  const startDate = startOfWeek(monthStart, { weekStartsOn: startDay as any });
-  const endDate = endOfWeek(monthEnd, { weekStartsOn: startDay as any });
+  const startDate = startOfWeek(monthStart, { weekStartsOn: startDay as 0 | 1 | 2 | 3 | 4 | 5 | 6 });
+  const endDate = endOfWeek(monthEnd, { weekStartsOn: startDay as 0 | 1 | 2 | 3 | 4 | 5 | 6 });
 
   const calendarDays = eachDayOfInterval({ start: startDate, end: endDate });
 
@@ -612,7 +332,7 @@ export default function MonthlyView({
     });
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calendarDays.length, currentDate, instancesByGroupDate, cancelledByGroupDate, tasks, dailyWeather, pendingCancelIds]);
+  }, [calendarDays.length, currentDate, overrideIndex, tasks, dailyWeather]);
 
   const prevMonth = () => setCurrentDate(subMonths(currentDate, 1));
   const nextMonth = () => setCurrentDate(addMonths(currentDate, 1));
@@ -843,8 +563,8 @@ export default function MonthlyView({
         </div>
       )}
 
-      {/* Selected Day Tasks (Mobile Optimized List) */}
-      <div className="md:hidden space-y-4 animate-in slide-in-from-bottom-2 duration-300">
+      {/* Selected Day Tasks (선택한 날짜의 일정 목록 — 데스크톱에서도 체크/수정/삭제 가능하도록 항상 표시) */}
+      <div className="space-y-4 animate-in slide-in-from-bottom-2 duration-300">
         <div className="flex items-center justify-between px-1">
           <h3 className="font-bold text-gray-700 flex items-center gap-2">
             <CalendarIcon className="w-4 h-4 text-green-600" />
@@ -869,7 +589,7 @@ export default function MonthlyView({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (canWrite) handleToggleClick(task.id!, !task.is_done);
+                    if (canWrite) onToggle(task.id!, !task.is_done);
                   }}
                   disabled={!canWrite}
                   className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${task.is_done ? 'bg-green-500 border-green-500' : 'border-gray-200'} ${!canWrite ? 'opacity-50 cursor-default' : 'active:scale-90'}`}
@@ -937,7 +657,7 @@ export default function MonthlyView({
                   {canDelete && (
                     <button
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); handleDeleteClick(task.id!); }}
+                      onClick={(e) => { e.stopPropagation(); onDelete(task.id!); }}
                       className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all active:scale-90"
                       title="삭제"
                     >
@@ -1098,8 +818,8 @@ export default function MonthlyView({
                     type="button"
                     onClick={async () => {
                       // 🚀 기상청 공식 단기예보 API 연동
-                      const lat = settings?.latitude ?? 36.3504;
-                      const lng = settings?.longitude ?? 127.3845;
+                      const lat = settings?.latitude ?? FARM_LAT;
+                      const lng = settings?.longitude ?? FARM_LNG;
 
                       let apiSuccess = false;
                       let autoTempMax = 30;
@@ -1112,7 +832,7 @@ export default function MonthlyView({
                         const controller = new AbortController();
                         const id = setTimeout(() => controller.abort(), 4500); // 4.5초 타임아웃
 
-                        const response = await fetch(apiUrl, { signal: controller.signal });
+                        const response = await authFetch(apiUrl, { signal: controller.signal });
                         clearTimeout(id);
 
                         if (response.ok) {

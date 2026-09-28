@@ -1,7 +1,7 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
-import { getStorage } from "firebase/storage";
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, type Firestore } from "firebase/firestore";
+import { getAuth, type Auth } from "firebase/auth";
+import { getStorage, type FirebaseStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -18,10 +18,31 @@ const app = getApps().length > 0
   ? getApp() 
   : (firebaseConfig.apiKey ? initializeApp(firebaseConfig) : null);
 
-// 서비스 인스턴스 내보내기 (app이 없을 경우 null 대비)
-export const db = app ? getFirestore(app) : null as any;
-export const auth = app ? getAuth(app) : null as any;
-export const storage = app ? getStorage(app) : null as any;
+// Firestore: 브라우저에서는 IndexedDB 오프라인 캐시 사용 (재접속 시 즉시 표시, 전파가 약한 밭에서도 조회/기록 가능)
+function createDb(): Firestore | null {
+  if (!app) return null;
+  if (typeof window === "undefined") return getFirestore(app);
+  try {
+    return initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
+  } catch {
+    return getFirestore(app); // HMR 등으로 이미 초기화된 경우
+  }
+}
+
+// 서비스 인스턴스 내보내기 (환경변수 누락 시 null — AppProvider가 안내 화면을 띄움)
+export const db = createDb() as Firestore;
+export const auth = (app ? getAuth(app) : null) as Auth;
+export const storage = (app ? getStorage(app) : null) as FirebaseStorage;
+
+/**
+ * 로그인한 사용자의 Firebase ID 토큰을 Authorization 헤더에 실어 내부 API(/api/*)를 호출합니다.
+ */
+export async function authFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  const token = await auth?.currentUser?.getIdToken();
+  const headers = new Headers(init.headers);
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  return fetch(input, { ...init, headers });
+}
 
 if (!firebaseConfig.apiKey) {
   console.warn("⚠️ Firebase API Key가 누락되었습니다. Vercel 환경 변수 설정을 확인해주세요.");

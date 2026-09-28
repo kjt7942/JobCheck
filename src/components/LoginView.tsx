@@ -34,8 +34,9 @@ export default function LoginView() {
         await authService.signup(email, password, userName);
         showToast(`${userName}님, 환영합니다! 계정이 생성되었습니다.`);
       }
-    } catch (err: any) {
-      console.error("Auth Error:", err);
+    } catch (e) {
+      const err = e as { code?: string };
+      console.error("Auth Error:", e);
       setError(true);
       let message = "인증에 실패했습니다. 다시 시도해주세요.";
       if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
@@ -56,8 +57,9 @@ export default function LoginView() {
     try {
       await authService.loginWithGoogle();
       showToast("구글 계정으로 로그인했습니다.");
-    } catch (err: any) {
-      console.error("Google Login Error:", err);
+    } catch (e) {
+      const err = e as { code?: string };
+      console.error("Google Login Error:", e);
       let errorMessage = "구글 로그인에 실패했습니다.";
 
       if (err.code === 'auth/unauthorized-domain') {

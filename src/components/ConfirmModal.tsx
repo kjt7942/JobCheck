@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, X } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 
 interface ConfirmModalProps {
   isOpen: boolean;
@@ -25,7 +25,6 @@ export default function ConfirmModal({
 }: ConfirmModalProps) {
   if (!isOpen) return null;
 
-  const accentColor = type === 'danger' ? 'orange' : 'green';
   const buttonBg = type === 'danger' ? 'bg-orange-500 hover:bg-orange-600 shadow-orange-500/20' : 'bg-green-600 hover:bg-green-700 shadow-green-600/20';
   const iconBg = type === 'danger' ? 'bg-orange-500/10' : 'bg-green-500/10';
   const iconColor = type === 'danger' ? 'text-orange-500' : 'text-green-600';

@@ -55,41 +55,43 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
     checkRedirect();
 
-    const unsubscribe = authService.subscribeAuthStatus((user, settings) => {
+    const unsubscribe = authService.subscribeAuthStatus((user) => {
       setUser(user);
-      setSettings(settings);
-      setLoading(false);
+      if (!user) {
+        setSettings(null);
+        setLoading(false);
+      }
     });
 
     return () => unsubscribe();
   }, []);
 
+  // 본인 설정 실시간 구독: 관리자 승인/권한 변경이 새로고침 없이 반영되고,
+  // 회원가입 직후 설정 문서가 늦게 생성되는 경우도 자동으로 따라잡음
+  useEffect(() => {
+    if (!user || !db) return;
+    const unsubscribe = firestoreRepo.subscribeUserSettings(
+      user.uid,
+      (s) => {
+        setSettings(s);
+        setLoading(false);
+      },
+      (e) => {
+        console.error("AppProvider: 사용자 설정 구독 오류", e);
+        setLoading(false);
+      }
+    );
+    return () => unsubscribe();
+  }, [user]);
+
   // 날짜별 공용 날씨 캐시 구독 (로그인 상태에서만)
   useEffect(() => {
-    if (!user || !db) {
-      setDailyWeather({});
-      return;
-    }
+    if (!user || !db) return;
     const unsubscribe = firestoreRepo.subscribeDailyWeather((map) => {
       setDailyWeather(map);
     });
     return () => unsubscribe();
   }, [user]);
-
-  const logout = async () => {
-    try {
-      await authService.logout();
-      showToast("로그아웃 되었습니다.");
-    } catch (error) {
-      showToast("로그아웃 중 오류가 발생했습니다.", "error");
-    }
-  };
-
-  const refreshSettings = async (uid: string) => {
-    // 설정만 다시 불러오고 싶을 때 사용
-    const newSettings = await authService.getSettings(uid);
-    setSettings(newSettings);
-  };
 
   // Toast Logic
   const showToast = useCallback((message: string, type: ToastType = "success") => {
@@ -105,6 +107,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
+
+  const logout = async () => {
+    try {
+      await authService.logout();
+      showToast("로그아웃 되었습니다.");
+    } catch {
+      showToast("로그아웃 중 오류가 발생했습니다.", "error");
+    }
+  };
+
+  const refreshSettings = async (uid: string) => {
+    // 설정만 다시 불러오고 싶을 때 사용
+    const newSettings = await authService.getSettings(uid);
+    setSettings(newSettings);
+  };
 
   // 파이어베이스 설정 누락 시 안내 화면
   if (!auth || !db) {
@@ -138,7 +155,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     toasts,
     showToast,
     removeToast,
-    dailyWeather,
+    dailyWeather: user ? dailyWeather : {},
     logout,
     refreshSettings,
   };

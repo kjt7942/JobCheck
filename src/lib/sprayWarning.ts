@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { format, addDays } from "date-fns";
 import { Job } from "@/types";
+import { authFetch } from "@/lib/firebase";
 
 const SPRAY_KEYWORDS = ["방제", "농약", "살포"];
 
@@ -38,16 +39,13 @@ export function useSprayRainWarnings(tasks: Job[], lat: number, lng: number, day
   const uniqueDatesKey = uniqueDates.join(",");
 
   useEffect(() => {
-    if (uniqueDates.length === 0) {
-      setRainDates(new Set());
-      return;
-    }
+    if (uniqueDates.length === 0) return; // 대상 없으면 경고도 없음 (candidates가 비어 결과에 영향 없음)
     let cancelled = false;
 
     (async () => {
       const results = await Promise.all(uniqueDates.map(async (d) => {
         try {
-          const res = await fetch(`/api/weather?lat=${lat}&lng=${lng}&date=${d}`);
+          const res = await authFetch(`/api/weather?lat=${lat}&lng=${lng}&date=${d}`);
           if (!res.ok) return null;
           const data = await res.json();
           return data.success && data.weather === "비" ? d : null;

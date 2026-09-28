@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { X, Save, Home, Sprout, CalendarDays, Sun, Moon, LogOut, Users, Shield, ShieldCheck, Trash2, Loader2, Check, Lock, Unlock, Bell, MapPin, Compass } from "lucide-react";
+import { useState, useCallback } from "react";
+import { X, Save, Home, Sprout, CalendarDays, Sun, Moon, LogOut, Users, Shield, ShieldCheck, Trash2, Loader2, Lock, Unlock, Bell, MapPin, Compass } from "lucide-react";
 import { UserSettings } from "@/types";
 import { adminService } from "@/services/adminService";
 import { useApp } from "@/providers/AppProvider";
 import { firestoreRepo } from "@/repo/firestoreRepository";
 import ConfirmModal from "@/components/ConfirmModal";
+import { FARM_LAT, FARM_LNG } from "@/lib/weather";
 
 interface FarmInfo {
   name: string;
@@ -31,7 +32,14 @@ type Tab = 'general' | 'users';
 export default function SettingsModal({ isOpen, onClose, farmInfo: initialInfo, onSave, onLogout, unreadCount = 0 }: SettingsModalProps) {
   const { user, settings, showToast } = useApp();
   const [activeTab, setActiveTab] = useState<Tab>('general');
-  const [info, setInfo] = useState<FarmInfo>(initialInfo);
+  // 모달이 열릴 때마다 부모가 key로 새로 마운트하므로, 초기값은 여기서 한 번만 정함
+  const [info, setInfo] = useState<FarmInfo>(() => ({
+    ...initialInfo,
+    latitude: initialInfo.latitude ?? FARM_LAT,
+    longitude: initialInfo.longitude ?? FARM_LNG,
+    weekStartsOn: initialInfo.weekStartsOn ?? 1,
+    theme: initialInfo.theme ?? 'light'
+  }));
   const [allUsers, setAllUsers] = useState<UserSettings[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [processingUid, setProcessingUid] = useState<string | null>(null);
@@ -53,50 +61,30 @@ export default function SettingsModal({ isOpen, onClose, farmInfo: initialInfo, 
         }));
         showToast("📍 대장님의 현재 폰 위치 GPS 좌표를 완벽히 가져왔습니다!");
       },
-      (error) => {
+      () => {
         showToast("GPS 위치 정보를 수집하는 데 실패했습니다. 설정에서 GPS를 활성화해 주세요.", "error");
       }
     );
   };
 
-  useEffect(() => {
-    if (!initialInfo) return;
-
-    setInfo({
-      ...initialInfo,
-      latitude: initialInfo.latitude ?? 36.3504,
-      longitude: initialInfo.longitude ?? 127.3845,
-      weekStartsOn: initialInfo.weekStartsOn ?? 1,
-      theme: initialInfo.theme ?? 'light'
-    });
-  }, [initialInfo]);
-
-  // 모달이 새로 열릴 때만 탭을 'general'로 초기화
-  useEffect(() => {
-    if (isOpen) {
-      setActiveTab('general');
-    }
-  }, [isOpen]);
-
-  // 사용자 리스트 로드 및 알림 읽음 처리
-  useEffect(() => {
-    if (isOpen && activeTab === 'users' && settings?.role === 'admin') {
-      loadUsers();
-      // 알림 모두 읽음 처리
-      firestoreRepo.markAllNotificationsAsRead();
-    }
-  }, [isOpen, activeTab, settings?.role]);
-
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     setLoadingUsers(true);
     try {
       const users = await adminService.fetchAllUsers();
       setAllUsers(users);
-    } catch (error) {
+    } catch {
       showToast("사용자 목록을 불러오지 못했습니다.", "error");
     } finally {
       setLoadingUsers(false);
     }
+  }, [showToast]);
+
+  // 사용자 탭을 열면 목록 로드 + 알림 읽음 처리
+  const openUsersTab = () => {
+    setActiveTab('users');
+    if (settings?.role !== 'admin') return;
+    loadUsers();
+    firestoreRepo.markAllNotificationsAsRead().catch(e => console.warn("알림 읽음 처리 실패:", e));
   };
 
   const handleUpdateUser = async (uid: string, updates: Partial<UserSettings>) => {
@@ -106,8 +94,8 @@ export default function SettingsModal({ isOpen, onClose, farmInfo: initialInfo, 
       await adminService.updateUserAuth(uid, updates, user.email);
       showToast("권한이 업데이트되었습니다.");
       await loadUsers(); // 리스트 갱신
-    } catch (error: any) {
-      showToast(error.message || "업데이트에 실패했습니다.", "error");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "업데이트에 실패했습니다.", "error");
     } finally {
       setProcessingUid(null);
     }
@@ -126,8 +114,8 @@ export default function SettingsModal({ isOpen, onClose, farmInfo: initialInfo, 
       await adminService.removeUser(uid);
       showToast("사용자가 삭제되었습니다.");
       await loadUsers();
-    } catch (error: any) {
-      showToast(error.message || "삭제에 실패했습니다.", "error");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "삭제에 실패했습니다.", "error");
     } finally {
       setProcessingUid(null);
     }
@@ -147,8 +135,7 @@ export default function SettingsModal({ isOpen, onClose, farmInfo: initialInfo, 
   if (!isOpen || !initialInfo) return null;
 
   const handleSave = () => {
-    onSave(info);
-    onClose();
+    onSave(info); // 저장 성공 시 부모가 닫음 (좌표 검증 실패 시 입력값 유지)
   };
 
   const isAdmin = settings?.role === 'admin';
@@ -190,7 +177,7 @@ export default function SettingsModal({ isOpen, onClose, farmInfo: initialInfo, 
                 기본 설정
               </button>
               <button
-                onClick={() => setActiveTab('users')}
+                onClick={openUsersTab}
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all relative ${activeTab === 'users' ? "bg-white text-green-700 shadow-md" : "text-white/70 hover:text-white"
                   }`}
               >
@@ -404,7 +391,7 @@ export default function SettingsModal({ isOpen, onClose, farmInfo: initialInfo, 
                           ].map((p) => {
                             const Icon = p.icon;
                             const permissions = u.permissions || { canRead: false, canWrite: false, canDelete: false };
-                            const hasPermission = (permissions as any)[p.key];
+                            const hasPermission = permissions[p.key as keyof typeof permissions];
                             return (
                               <button
                                 key={p.key}

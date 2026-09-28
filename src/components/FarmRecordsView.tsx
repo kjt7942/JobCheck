@@ -4,9 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import { Wallet, Trash2, TrendingUp, TrendingDown, Grape, Camera, X, Sparkles } from "lucide-react";
 import { useApp } from "@/providers/AppProvider";
+import ConfirmModal from "@/components/ConfirmModal";
 import { farmRecordService } from "@/services/farmRecordService";
 import { FarmRecord } from "@/types";
 import { compressImage } from "@/utils/imageUtils";
+import { authFetch } from "@/lib/firebase";
 
 const COST_CATEGORIES = ["농약", "비료", "인건비", "유류/농자재", "기타"];
 
@@ -16,6 +18,7 @@ function formatWon(n: number): string {
 
 export default function FarmRecordsView() {
   const { user, settings, showToast } = useApp();
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null); // 삭제 확인 모달 대상
   const canRead = settings?.role === 'admin' || settings?.permissions?.canRead;
   const canWrite = settings?.role === 'admin' || settings?.permissions?.canWrite;
   const canDelete = settings?.role === 'admin' || settings?.permissions?.canDelete;
@@ -109,6 +112,7 @@ export default function FarmRecordsView() {
   const handleAdd = async () => {
     if (!canWrite) { showToast("등록 권한이 없습니다.", "error"); return; }
     if (amount <= 0) { showToast("금액/수확량을 입력해 주세요.", "error"); return; }
+    if (!date) { showToast("날짜를 입력해 주세요.", "error"); return; }
     if (saving) return;
     setSaving(true);
     try {
@@ -141,7 +145,13 @@ export default function FarmRecordsView() {
     if (files.length === 0) return;
     e.target.value = "";
 
-    const compressedFiles = await Promise.all(files.map(file => compressImage(file)));
+    let compressedFiles: File[];
+    try {
+      compressedFiles = await Promise.all(files.map(file => compressImage(file)));
+    } catch {
+      showToast("사진을 불러오지 못했습니다. 다른 사진(JPG/PNG)으로 시도해 주세요.", "error");
+      return;
+    }
     const isFirstImage = imageFiles.length === 0;
     setImageFiles(prev => [...prev, ...compressedFiles]);
     setImagePreviews(prev => [...prev, ...compressedFiles.map(file => URL.createObjectURL(file))]);
@@ -162,7 +172,7 @@ export default function FarmRecordsView() {
         reader.readAsDataURL(file);
       });
 
-      const res = await fetch("/api/receipt-ocr", {
+      const res = await authFetch("/api/receipt-ocr", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ image: base64, mimeType: file.type, categories: COST_CATEGORIES }),
@@ -173,7 +183,7 @@ export default function FarmRecordsView() {
         return;
       }
 
-      if (data.date) setDate(data.date);
+      if (typeof data.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(data.date)) setDate(data.date);
       if (data.category && COST_CATEGORIES.includes(data.category)) setCategory(data.category);
       if (typeof data.amount === "number" && data.amount > 0) setAmount(data.amount);
       if (data.memo) setMemo(data.memo);
@@ -252,7 +262,7 @@ export default function FarmRecordsView() {
       <div className="bg-[var(--card-bg)] border border-[var(--card-border)] rounded-[24px] p-5 shadow-sm space-y-4">
         <div className="grid grid-cols-2 gap-2">
           <button
-            onClick={() => setRecordType('cost')}
+            onClick={() => { setRecordType('cost'); setCategory(COST_CATEGORIES[0]); }}
             className={`py-2 rounded-xl text-xs font-black border transition-all ${
               recordType === 'cost' ? "bg-red-500 border-transparent text-white shadow-sm" : "bg-[var(--input-bg)] border-[var(--card-border)] text-gray-400"
             }`}
@@ -260,7 +270,7 @@ export default function FarmRecordsView() {
             💸 비용 지출
           </button>
           <button
-            onClick={() => setRecordType('harvest')}
+            onClick={() => { setRecordType('harvest'); setCategory(""); }}
             className={`py-2 rounded-xl text-xs font-black border transition-all ${
               recordType === 'harvest' ? "bg-green-600 border-transparent text-white shadow-sm" : "bg-[var(--input-bg)] border-[var(--card-border)] text-gray-400"
             }`}
@@ -461,7 +471,7 @@ export default function FarmRecordsView() {
               </div>
               {canDelete && (
                 <button
-                  onClick={() => handleDelete(r.id!)}
+                  onClick={() => setPendingDeleteId(r.id!)}
                   className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all shrink-0"
                   title="삭제"
                 >
@@ -565,6 +575,15 @@ export default function FarmRecordsView() {
           </button>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={!!pendingDeleteId}
+        title="기록 삭제"
+        message="이 기록과 첨부 사진을 삭제할까요? 삭제된 내용은 복구할 수 없습니다."
+        confirmText="삭제하기"
+        onConfirm={() => { const id = pendingDeleteId!; setPendingDeleteId(null); handleDelete(id); }}
+        onCancel={() => setPendingDeleteId(null)}
+      />
     </div>
   );
 }

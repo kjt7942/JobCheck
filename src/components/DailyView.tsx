@@ -1,82 +1,20 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { format, isSameDay, addDays, subDays, addWeeks, subWeeks, addMonths } from "date-fns";
+import { format, isSameDay, addDays, subDays, addMonths } from "date-fns";
 import { ko } from "date-fns/locale";
 import { Job } from "@/types";
-import { Plus, Check, Trash2, Clock, Calendar as CalendarIcon, CheckCircle2, ChevronLeft, ChevronRight, Activity, Search, Edit2, X, Save, Sun, CloudRain, Cloud, CloudSnow, RefreshCw, CalendarDays, Camera, Image as ImageIcon, Lock as LockIcon, Sprout, StickyNote } from "lucide-react";
+import { buildOverrideIndex, getTasksForDate, isVirtualId, type RecurringScope } from "@/lib/recurrence";
+import { Plus, Check, Trash2, Clock, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Activity, Edit2, X, Sun, CloudRain, Cloud, CloudSnow, RefreshCw, CalendarDays, Camera, Lock as LockIcon, Sprout, StickyNote } from "lucide-react";
 import DatePicker, { registerLocale } from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { compressImage } from "@/utils/imageUtils";
 import { useApp } from "@/providers/AppProvider";
 import { useSprayRainWarnings } from "@/lib/sprayWarning";
+import { authFetch } from "@/lib/firebase";
+import { FARM_LAT, FARM_LNG } from "@/lib/weather";
 
 registerLocale("ko", ko);
-
-// 🌍 기상청 LCC DFS 위경도 <-> X,Y 격자 좌표 변환 함수
-function dfs_xy_conv(code: "toXY" | "toLL", v1: number, v2: number) {
-  const RE = 6371.00877; // 지구 반경(km)
-  const GRID = 5.0; // 격자 간격(km)
-  const SLAT1 = 30.0; // 투영 위도1(degree)
-  const SLAT2 = 60.0; // 투영 위도2(degree)
-  const OLON = 126.0; // 기준점 경도(degree)
-  const OLAT = 38.0; // 기준점 위도(degree)
-  const XO = 43; // 기준점 X좌표(GRID)
-  const YO = 136; // 기준점 Y좌표(GRID)
-
-  const DEGRAD = Math.PI / 180.0;
-  const RADDEG = 180.0 / Math.PI;
-
-  const re = RE / GRID;
-  const slat1 = SLAT1 * DEGRAD;
-  const slat2 = SLAT2 * DEGRAD;
-  const olon = OLON * DEGRAD;
-  const olat = OLAT * DEGRAD;
-
-  let sn = Math.tan(Math.PI * 0.25 + slat2 * 0.5) / Math.tan(Math.PI * 0.25 + slat1 * 0.5);
-  sn = Math.log(Math.cos(slat1) / Math.cos(slat2)) / Math.log(sn);
-  let sf = Math.tan(Math.PI * 0.25 + slat1 * 0.5);
-  sf = Math.pow(sf, sn) * Math.cos(slat1) / sn;
-  let ro = Math.tan(Math.PI * 0.25 + olat * 0.5);
-  ro = re * sf / Math.pow(ro, sn);
-  const rs: any = {};
-
-  if (code === "toXY") {
-    rs["lat"] = v1;
-    rs["lng"] = v2;
-    let ra = Math.tan(Math.PI * 0.25 + v1 * DEGRAD * 0.5);
-    ra = re * sf / Math.pow(ra, sn);
-    let theta = v2 * DEGRAD - olon;
-    if (theta > Math.PI) theta -= 2.0 * Math.PI;
-    if (theta < -Math.PI) theta += 2.0 * Math.PI;
-    theta *= sn;
-    rs["x"] = Math.floor(ra * Math.sin(theta) + XO + 0.5);
-    rs["y"] = Math.floor(ro - ra * Math.cos(theta) + YO + 0.5);
-  } else {
-    rs["x"] = v1;
-    rs["y"] = v2;
-    let xn = v1 - XO;
-    let yn = ro - v2 + YO;
-    let r = Math.sqrt(xn * xn + yn * yn);
-    if (sn < 0.0) r = -r;
-    let alat = Math.pow((re * sf / r), (1.0 / sn));
-    alat = 2.0 * Math.atan(alat) - Math.PI * 0.5;
-
-    let theta = 0.0;
-    if (Math.abs(xn) <= 0.0) {
-      theta = 0.0;
-    } else {
-      if (Math.abs(yn) <= 0.0) {
-        theta = Math.PI * 0.5;
-        if (xn < 0.0) theta = -theta;
-      } else theta = Math.atan2(xn, yn);
-    }
-    let alon = theta / sn + olon;
-    rs["lat"] = alat * RADDEG;
-    rs["lng"] = alon * RADDEG;
-  }
-  return rs;
-}
 
 // 🎨 스켈레톤 UI 포함 이미지 컴포넌트
 const ImageWithSkeleton = ({ src, alt, className, onClick, onTouchStart, onTouchMove, onTouchEnd }: { 
@@ -88,12 +26,9 @@ const ImageWithSkeleton = ({ src, alt, className, onClick, onTouchStart, onTouch
   onTouchMove?: React.TouchEventHandler,
   onTouchEnd?: React.TouchEventHandler
 }) => {
-  const [isLoaded, setIsLoaded] = useState(false);
-
-  // src가 변경될 때만 로딩 상태 초기화
-  useEffect(() => {
-    setIsLoaded(false);
-  }, [src]);
+  // 현재 src의 로딩 완료 여부 (src가 바뀌면 자동으로 미완료 상태가 됨)
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
+  const isLoaded = loadedSrc === src;
 
   return (
     <div className={`relative overflow-hidden ${className}`}>
@@ -103,7 +38,7 @@ const ImageWithSkeleton = ({ src, alt, className, onClick, onTouchStart, onTouch
       <img
         src={src}
         alt={alt}
-        onLoad={() => setIsLoaded(true)}
+        onLoad={() => setLoadedSrc(src)}
         className={`w-full h-full object-cover transition-opacity duration-500 ${isLoaded ? "opacity-100" : "opacity-0"}`}
         onClick={onClick}
         onTouchStart={onTouchStart}
@@ -113,6 +48,89 @@ const ImageWithSkeleton = ({ src, alt, className, onClick, onTouchStart, onTouch
     </div>
   );
 };
+
+type QuickPreset = { label: string; value: string };
+
+const DEFAULT_PRESETS: QuickPreset[] = [
+  { label: "💧 물주기", value: "과수원 물주기" },
+  { label: "🧪 영양제", value: "영양제 및 비료 살포" },
+  { label: "🚜 로터리", value: "밭 로터리 작업" },
+  { label: "📦 수확", value: "농작물 수확 및 포장" },
+  { label: "🧹 정리", value: "비닐하우스 정리정돈" }
+];
+
+// 전체 일정에서 자주 쓰는 작업명을 뽑아 퀵 프리셋(최대 5개)으로 가공
+function computePresets(tasks: Job[]): QuickPreset[] {
+  // 1. 유효 일정 필터링 (텍스트가 비어있지 않고, 취소되지 않은 마스터 및 일반 일정)
+  const validTasks = tasks.filter(t => t.task && t.task.trim() !== "" && !t.is_cancelled && !t.is_instance);
+
+  // 2. 단어/구문 빈도수 집계
+  const counts: { [key: string]: number } = {};
+  validTasks.forEach(t => {
+    const cleanTask = t.task.trim();
+    counts[cleanTask] = (counts[cleanTask] || 0) + 1;
+  });
+
+  // 3. 빈도순 정렬된 고유 키워드들
+  const sortedKeywords = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+
+  if (sortedKeywords.length === 0) return [];
+
+  // 4. 이모지 매칭 헬퍼
+  const matchEmoji = (text: string): string => {
+    if (text.includes("물") || text.includes("소독") || text.includes("관수") || text.includes("물주기")) return "💧";
+    if (text.includes("비료") || text.includes("영양") || text.includes("살포") || text.includes("약") || text.includes("제초제")) return "🧪";
+    if (text.includes("로터리") || text.includes("밭") || text.includes("트랙터") || text.includes("경운") || text.includes("멀칭")) return "🚜";
+    if (text.includes("수확") || text.includes("포장") || text.includes("수집") || text.includes("따기")) return "📦";
+    if (text.includes("정리") || text.includes("하우스") || text.includes("청소") || text.includes("분리")) return "🧹";
+    if (text.includes("가지") || text.includes("전지") || text.includes("적과") || text.includes("순지르기") || text.includes("순")) return "✂️";
+    if (text.includes("파종") || text.includes("심기") || text.includes("이앙") || text.includes("모종")) return "🌱";
+    return "🌱";
+  };
+
+  // 5. 중복 카테고리(이모지) 제거 필터링 루프
+  const selectedKeywords: string[] = [];
+  const usedEmojis = new Set<string>();
+
+  for (const kw of sortedKeywords) {
+    if (selectedKeywords.length >= 5) break;
+    const emoji = matchEmoji(kw);
+    
+    // 이미 추천된 동일 작업 종류(이모지)라면 스킵 (다양성 확보)
+    if (emoji !== "🌱" && usedEmojis.has(emoji)) {
+      continue;
+    }
+    
+    selectedKeywords.push(kw);
+    if (emoji !== "🌱") {
+      usedEmojis.add(emoji);
+    }
+  }
+
+  // 6. 만약 다양성을 챙기느라 5개가 다 안 찼다면 남은 자리는 빈도 정렬순으로 중복 무시하고 보충
+  if (selectedKeywords.length < 5) {
+    for (const kw of sortedKeywords) {
+      if (selectedKeywords.length >= 5) break;
+      if (!selectedKeywords.includes(kw)) {
+        selectedKeywords.push(kw);
+      }
+    }
+  }
+
+  // 7. 추천 프리셋 가공 (첫 어절을 라벨로 활용하고, 풀텍스트를 입력 값으로 활용)
+  return selectedKeywords.map(keyword => {
+    const emoji = matchEmoji(keyword);
+    const firstWord = keyword.split(" ")[0];
+    const labelText = firstWord.length <= 1 && keyword.split(" ").length > 1 
+      ? `${firstWord} ${keyword.split(" ")[1]}` 
+      : firstWord;
+
+    return {
+      label: `${emoji} ${labelText}`,
+      value: keyword
+    };
+  });
+}
 
 export default function DailyView({
   tasks,
@@ -132,23 +150,19 @@ export default function DailyView({
     temp_min?: string | number, 
     group_id?: string, 
     imageFiles?: File[],
-    recurrence?: any,
-    is_instance?: boolean,
-    instance_date?: string,
-    is_cancelled?: boolean,
-    is_done?: boolean
+    recurrence?: Job["recurrence"]
   ) => void;
   onToggle: (id: string, is_done: boolean) => void;
   onDelete: (id: string) => void;
-  onUpdate: (id: string, updates: Partial<Job>, newImageFiles?: File[]) => void;
+  onUpdate: (id: string, updates: Partial<Job>, newImageFiles?: File[], scope?: RecurringScope) => void;
   canWrite?: boolean;
   canDelete?: boolean;
 }) {
   const { settings, dailyWeather } = useApp();
   const sprayRainWarnings = useSprayRainWarnings(
     tasks,
-    settings?.latitude ?? 36.3504,
-    settings?.longitude ?? 127.3845
+    settings?.latitude ?? FARM_LAT,
+    settings?.longitude ?? FARM_LNG
   );
   const [newTitle, setNewTitle] = useState("");
   const [startDate, setStartDate] = useState<Date | null>(new Date());
@@ -165,8 +179,6 @@ export default function DailyView({
   const [pendingUpdates, setPendingUpdates] = useState<Partial<Job> | null>(null);
   const [pendingNewImageFiles, setPendingNewImageFiles] = useState<File[] | undefined>(undefined);
 
-  // 🚀 가상 일정 삭제 중복 클릭 방지 (Firestore 왕복 전 즉시 로컬 숨김)
-  const [pendingCancelIds, setPendingCancelIds] = useState<Set<string>>(new Set());
 
   // 이미지 업로드 관련 상태
   const [imageFiles, setImageFiles] = useState<File[]>([]);
@@ -195,119 +207,20 @@ export default function DailyView({
   const [viewDate, setViewDate] = useState(new Date());
   const [selectedImageInfo, setSelectedImageInfo] = useState<{ urls: string[], index: number } | null>(null);
 
-  // 🚀 자주 사용하는 일정 프리셋 상태
-  const [quickPresets, setQuickPresets] = useState<{ label: string; value: string }[]>([]);
-
-  // 컴포넌트 마운트 시 로컬스토리지에서 퀵 프리셋 캐시 복구
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const cached = localStorage.getItem("quick_presets");
-      if (cached) {
-        try {
-          setQuickPresets(JSON.parse(cached));
-        } catch (e) {
-          setQuickPresets([
-            { label: "💧 물주기", value: "과수원 물주기" },
-            { label: "🧪 영양제", value: "영양제 및 비료 살포" },
-            { label: "🚜 로터리", value: "밭 로터리 작업" },
-            { label: "📦 수확", value: "농작물 수확 및 포장" },
-            { label: "🧹 정리", value: "비닐하우스 정리정돈" }
-          ]);
-        }
-      } else {
-        setQuickPresets([
-          { label: "💧 물주기", value: "과수원 물주기" },
-          { label: "🧪 영양제", value: "영양제 및 비료 살포" },
-          { label: "🚜 로터리", value: "밭 로터리 작업" },
-          { label: "📦 수확", value: "농작물 수확 및 포장" },
-          { label: "🧹 정리", value: "비닐하우스 정리정돈" }
-        ]);
-      }
-    }
-  }, []);
-
-  // 전체 일정이 변경될 때 자주 쓰는 키워드를 분석하여 백그라운드 랭킹 캐시 갱신
-  useEffect(() => {
-    if (!tasks || tasks.length === 0) return;
-
-    // 1. 유효 일정 필터링 (텍스트가 비어있지 않고, 취소되지 않은 마스터 및 일반 일정)
-    const validTasks = tasks.filter(t => t.task && t.task.trim() !== "" && !t.is_cancelled && !t.is_instance);
-
-    // 2. 단어/구문 빈도수 집계
-    const counts: { [key: string]: number } = {};
-    validTasks.forEach(t => {
-      const cleanTask = t.task.trim();
-      counts[cleanTask] = (counts[cleanTask] || 0) + 1;
-    });
-
-    // 3. 빈도순 정렬된 고유 키워드들
-    const sortedKeywords = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
-
-    if (sortedKeywords.length === 0) return;
-
-    // 4. 이모지 매칭 헬퍼
-    const matchEmoji = (text: string): string => {
-      if (text.includes("물") || text.includes("소독") || text.includes("관수") || text.includes("물주기")) return "💧";
-      if (text.includes("비료") || text.includes("영양") || text.includes("살포") || text.includes("약") || text.includes("제초제")) return "🧪";
-      if (text.includes("로터리") || text.includes("밭") || text.includes("트랙터") || text.includes("경운") || text.includes("멀칭")) return "🚜";
-      if (text.includes("수확") || text.includes("포장") || text.includes("수집") || text.includes("따기")) return "📦";
-      if (text.includes("정리") || text.includes("하우스") || text.includes("청소") || text.includes("분리")) return "🧹";
-      if (text.includes("가지") || text.includes("전지") || text.includes("적과") || text.includes("순지르기") || text.includes("순")) return "✂️";
-      if (text.includes("파종") || text.includes("심기") || text.includes("이앙") || text.includes("모종")) return "🌱";
-      return "🌱";
-    };
-
-    // 5. 중복 카테고리(이모지) 제거 필터링 루프
-    const selectedKeywords: string[] = [];
-    const usedEmojis = new Set<string>();
-
-    for (const kw of sortedKeywords) {
-      if (selectedKeywords.length >= 5) break;
-      const emoji = matchEmoji(kw);
-      
-      // 이미 추천된 동일 작업 종류(이모지)라면 스킵 (다양성 확보)
-      if (emoji !== "🌱" && usedEmojis.has(emoji)) {
-        continue;
-      }
-      
-      selectedKeywords.push(kw);
-      if (emoji !== "🌱") {
-        usedEmojis.add(emoji);
-      }
-    }
-
-    // 6. 만약 다양성을 챙기느라 5개가 다 안 찼다면 남은 자리는 빈도 정렬순으로 중복 무시하고 보충
-    if (selectedKeywords.length < 5) {
-      for (const kw of sortedKeywords) {
-        if (selectedKeywords.length >= 5) break;
-        if (!selectedKeywords.includes(kw)) {
-          selectedKeywords.push(kw);
-        }
-      }
-    }
-
-    // 7. 추천 프리셋 가공 (첫 어절을 라벨로 활용하고, 풀텍스트를 입력 값으로 활용)
-    const calculatedPresets = selectedKeywords.map(keyword => {
-      const emoji = matchEmoji(keyword);
-      const firstWord = keyword.split(" ")[0];
-      const labelText = firstWord.length <= 1 && keyword.split(" ").length > 1 
-        ? `${firstWord} ${keyword.split(" ")[1]}` 
-        : firstWord;
-
-      return {
-        label: `${emoji} ${labelText}`,
-        value: keyword
-      };
-    });
-
-    // 기존 캐시와 달라졌을 때만 갱신하여 무한 루프 방지
-    const currentCached = localStorage.getItem("quick_presets");
-    const newCachedStr = JSON.stringify(calculatedPresets);
-    if (currentCached !== newCachedStr) {
-      localStorage.setItem("quick_presets", newCachedStr);
-      setQuickPresets(calculatedPresets);
-    }
+  // 🚀 자주 사용하는 일정 프리셋: 일정 빈도로 계산, 일정이 아직 없으면 마지막 캐시 → 기본값
+  const quickPresets = useMemo<QuickPreset[]>(() => {
+    const computed = computePresets(tasks);
+    if (computed.length > 0) return computed;
+    try {
+      const cached = typeof window !== "undefined" ? localStorage.getItem("quick_presets") : null;
+      if (cached) return JSON.parse(cached);
+    } catch { /* 손상된 캐시는 무시 */ }
+    return DEFAULT_PRESETS;
   }, [tasks]);
+
+  useEffect(() => {
+    try { localStorage.setItem("quick_presets", JSON.stringify(quickPresets)); } catch { /* 저장 불가 환경 무시 */ }
+  }, [quickPresets]);
 
   // 반복 일정 관련 상태
   const [isRecurring, setIsRecurring] = useState(false);
@@ -325,8 +238,8 @@ export default function DailyView({
   // 🚀 기상청 공식 단기예보 API 연동 엔진
   const fetchFarmWeather = async (isEdit: boolean = false) => {
     const farmName = settings?.farm_name || "꿀송이농장";
-    const lat = settings?.latitude ?? 36.3504;
-    const lng = settings?.longitude ?? 127.3845;
+    const lat = settings?.latitude ?? FARM_LAT;
+    const lng = settings?.longitude ?? FARM_LNG;
 
     let apiSuccess = false;
     let autoTempMax = 30; // 디폴트 최고 기온
@@ -342,7 +255,7 @@ export default function DailyView({
       const controller = new AbortController();
       const id = setTimeout(() => controller.abort(), 4500); // 4.5초 타임아웃
 
-      const response = await fetch(apiUrl, { signal: controller.signal });
+      const response = await authFetch(apiUrl, { signal: controller.signal });
       clearTimeout(id);
 
       if (response.ok) {
@@ -378,121 +291,12 @@ export default function DailyView({
   };
 
 
-  // 🚀 2단계: 가상 일정 렌더링 엔진 (마스터-인스턴스 결합 처리)
-  const viewTasks = (() => {
-    const list: Job[] = [];
-    const instancesByGroupDate = new Map<string, Job>();
-    const cancelledByGroupDate = new Set<string>();
-
-    // 1. 실제 인스턴스 및 취소 처리된 건들을 사전 분류하여 Map/Set에 저장
-    tasks.forEach(t => {
-      if (t.is_instance && t.instance_date) {
-        const key = `${t.group_id}_${t.instance_date}`;
-        instancesByGroupDate.set(key, t);
-      }
-      if (t.is_cancelled && t.instance_date) {
-        const key = `${t.group_id}_${t.instance_date}`;
-        cancelledByGroupDate.add(key);
-      }
-    });
-
-    const targetDateStr = format(viewDate, "yyyy-MM-dd");
-
-    // 2. 전체 DB 데이터를 순회하며 오늘 보여줄 일정 계산
-    tasks.forEach(t => {
-      // 2-1. 개별 변경된 인스턴스나 삭제 기록은 중복 노출되지 않도록 직접 삽입 보류
-      // -> 단, 마스터 주기가 아닌 전혀 다른 날짜로 수정 이동했거나 독립적으로 생성된 인스턴스는 
-      //    오늘 날짜와 일치할 때 리스트에 누락 없이 안전하게 포함시켜야 합니다.
-      if (t.is_instance || t.is_cancelled) {
-        if (t.is_instance && !t.is_cancelled && format(new Date(t.date), "yyyy-MM-dd") === targetDateStr) {
-          if (!list.some(existing => existing.id === t.id)) {
-            list.push(t);
-          }
-        }
-        return;
-      }
-
-      // 2-2. 일반 일정 (반복 설정이 없음) -> 단순 날짜 비교 (타임존 오류 원천 차단)
-      if (!t.recurrence) {
-        if (format(new Date(t.date), "yyyy-MM-dd") === targetDateStr) {
-          list.push(t);
-        }
-        return;
-      }
-
-      // 2-3. 반복 마스터 일정 -> 동적 가상 일정 연산
-      const masterStartDate = new Date(t.date);
-      const masterEndDate = new Date(t.recurrence.end_date);
-      
-      // 조회일이 반복 범위(시작일~종료일) 밖이면 노출 대상 아님
-      const viewDateOnly = new Date(viewDate.getFullYear(), viewDate.getMonth(), viewDate.getDate());
-      const startDateOnly = new Date(masterStartDate.getFullYear(), masterStartDate.getMonth(), masterStartDate.getDate());
-      const endDateOnly = new Date(masterEndDate.getFullYear(), masterEndDate.getMonth(), masterEndDate.getDate());
-
-      if (viewDateOnly < startDateOnly || viewDateOnly > endDateOnly) {
-        return;
-      }
-
-      // 예외 인스턴스(오늘 날짜에 삭제된 건이 있는지) 체크
-      const key = `${t.group_id}_${targetDateStr}`;
-      if (cancelledByGroupDate.has(key)) {
-        return; // 삭제 처리 완료 -> 화면 노출 건너뜀
-      }
-
-      // 가상 일정 오버라이드 체크 (이미 값을 수정해서 실제 인스턴스로 바뀐 게 있는지)
-      const instanceOverride = instancesByGroupDate.get(key);
-      if (instanceOverride) {
-        // 단, 인스턴스의 실제 날짜가 오늘(targetDateStr)과 같을 때만 오늘 리스트에 담는다!
-        // 날짜를 미래/과거로 옮긴 것이라면, 원래 오늘 렌더링되던 마스터 가상 일정은 렌더링하지 않고 종료(오버라이드 삭제 효과).
-        if (format(new Date(instanceOverride.date), "yyyy-MM-dd") === targetDateStr) {
-          list.push(instanceOverride);
-        }
-        return;
-      }
-
-      // 주기에 따라 오늘 렌더링할 것인지 수학적 연산
-      let shouldRender = false;
-      const diffDays = Math.floor((viewDateOnly.getTime() - startDateOnly.getTime()) / (1000 * 60 * 60 * 24));
-      
-      if (diffDays >= 0) {
-        const type = t.recurrence.type;
-        const interval = t.recurrence.interval || 1;
-
-        if (type === "DAILY") {
-          shouldRender = (diffDays % interval === 0);
-        } else if (type === "WEEKLY") {
-          shouldRender = (diffDays % (7 * interval) === 0);
-        } else if (type === "BIWEEKLY") {
-          shouldRender = (diffDays % (14 * interval) === 0);
-        } else if (type === "MONTHLY") {
-          const targetMonthDays = (viewDateOnly.getFullYear() - startDateOnly.getFullYear()) * 12 + (viewDateOnly.getMonth() - startDateOnly.getMonth());
-          shouldRender = (targetMonthDays % interval === 0 && viewDateOnly.getDate() === startDateOnly.getDate());
-        } else if (type === "CUSTOM") {
-          shouldRender = (diffDays % interval === 0);
-        }
-      }
-
-      if (shouldRender) {
-        // 가상 일정 렌더링용 객체 조립 (가상 ID 생성)
-        const virtualId = `${t.id}.${targetDateStr}`;
-        if (pendingCancelIds.has(virtualId)) return; // 삭제 요청 후 Firestore 왕복 전까지 즉시 숨김
-
-        // 그날의 자동 수집된 날씨 캐시가 있으면 마스터의 정적 기본값 대신 사용 (매일 수동 업데이트 불필요)
-        const cachedWeather = dailyWeather[targetDateStr];
-        list.push({
-          ...t,
-          id: virtualId, // virtual id
-          date: new Date(viewDate.getFullYear(), viewDate.getMonth(), viewDate.getDate(), masterStartDate.getHours(), masterStartDate.getMinutes()).toISOString(),
-          instance_date: targetDateStr,
-          weather: cachedWeather?.weather ?? t.weather,
-          temp_max: cachedWeather?.temp_max ?? t.temp_max,
-          temp_min: cachedWeather?.temp_min ?? t.temp_min
-        });
-      }
-    });
-
-    return list.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  })();
+  // 🚀 반복 일정 엔진(lib/recurrence)으로 조회일의 일정 계산
+  const overrideIndex = useMemo(() => buildOverrideIndex(tasks), [tasks]);
+  const viewTasks = useMemo(
+    () => getTasksForDate(tasks, viewDate, overrideIndex, dailyWeather),
+    [tasks, viewDate, overrideIndex, dailyWeather]
+  );
 
   // 🔮 조회일이 오늘보다 미래인지 여부 판정 (미래 일정 기후 정보 노출 차단용)
   const isFutureDate = (() => {
@@ -527,94 +331,6 @@ export default function DailyView({
     });
   })();
 
-  // 🚀 CRUD 가로채기(Interceptor) 함수들
-  const handleToggleClick = (id: string, is_done: boolean) => {
-    if (id.includes('.')) {
-      // 1. 가상 일정의 토글 -> 실제 변경 인스턴스 문서를 DB에 신규 작성
-      const [masterId, instDate] = id.split('.');
-      const masterTask = tasks.find(t => t.id === masterId);
-      if (masterTask) {
-        const masterStartDate = new Date(masterTask.date);
-        // 그날의 자동 수집된 날씨 캐시가 있으면 마스터의 정적 기본값 대신 사용 (매일 수동 업데이트 불필요)
-        const cachedWeather = dailyWeather[instDate];
-        onAdd(
-          masterTask.task,
-          new Date(viewDate.getFullYear(), viewDate.getMonth(), viewDate.getDate(), masterStartDate.getHours(), masterStartDate.getMinutes()).toISOString(),
-          cachedWeather?.weather ?? masterTask.weather ?? "",
-          cachedWeather?.temp_max ?? masterTask.temp_max,
-          cachedWeather?.temp_min ?? masterTask.temp_min,
-          masterTask.group_id,
-          undefined, // 이미지 파일 없음
-          undefined, // recurrence 없음
-          true,      // is_instance = true
-          instDate,  // instance_date = instDate
-          false,     // is_cancelled = false
-          is_done    // 🆕 완료 여부 즉시 저장
-        );
-      }
-    } else {
-      // 2. 일반 일정 토글
-      onToggle(id, is_done);
-    }
-  };
-
-  const handleDeleteClick = (id: string) => {
-    if (id.includes('.')) {
-      if (pendingCancelIds.has(id)) return; // 중복 클릭 방지 (Firestore 왕복 대기 중)
-
-      // 1. 가상 일정의 단일 삭제 -> is_cancelled = true 인 인스턴스를 하나 DB에 씀
-      const [masterId, instDate] = id.split('.');
-      const masterTask = tasks.find(t => t.id === masterId);
-      if (masterTask) {
-        setPendingCancelIds(prev => new Set(prev).add(id)); // 즉시 로컬 숨김
-        const masterStartDate = new Date(masterTask.date);
-        onAdd(
-          masterTask.task,
-          new Date(viewDate.getFullYear(), viewDate.getMonth(), viewDate.getDate(), masterStartDate.getHours(), masterStartDate.getMinutes()).toISOString(),
-          masterTask.weather || "",
-          masterTask.temp_max,
-          masterTask.temp_min,
-          masterTask.group_id,
-          undefined,
-          undefined,
-          false,
-          instDate,
-          true // is_cancelled = true
-        );
-      }
-    } else {
-      // 2. 일반 일정 삭제
-      onDelete(id);
-    }
-  };
-
-  const handleUpdateClick = (id: string, updates: Partial<Job>, newImageFiles?: File[]) => {
-    if (id.includes('.')) {
-      // 1. 가상 일정의 정보 수정 -> 수정된 값을 기반으로 신규 인스턴스 작성
-      const [masterId, instDate] = id.split('.');
-      const masterTask = tasks.find(t => t.id === masterId);
-      if (masterTask) {
-        const masterStartDate = new Date(masterTask.date);
-        onAdd(
-          updates.task || masterTask.task,
-          updates.date || new Date(viewDate.getFullYear(), viewDate.getMonth(), viewDate.getDate(), masterStartDate.getHours(), masterStartDate.getMinutes()).toISOString(),
-          updates.weather !== undefined ? updates.weather : masterTask.weather,
-          updates.temp_max !== undefined ? Number(updates.temp_max) : masterTask.temp_max,
-          updates.temp_min !== undefined ? Number(updates.temp_min) : masterTask.temp_min,
-          masterTask.group_id,
-          newImageFiles,
-          undefined,
-          true, // is_instance = true
-          instDate,
-          false // is_cancelled = false
-        );
-      }
-    } else {
-      // 2. 일반 일정 수정
-      onUpdate(id, updates, newImageFiles);
-    }
-  };
-
   const completedCount = viewTasks.filter((t) => t.is_done).length;
   const totalCount = viewTasks.length;
   const progress = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
@@ -624,26 +340,32 @@ export default function DailyView({
   const goToToday = () => setViewDate(new Date());
 
   // 해당 일자의 날씨(일정에 기록된 값, 없으면 자동 수집 캐시)를 일정 등록 폼의 기본값으로 설정
-  useEffect(() => {
-    if (!headerWeather) return;
-    if (headerWeather.weather) setManualWeather(headerWeather.weather);
-    if (headerWeather.temp_max !== undefined && headerWeather.temp_max !== null) {
-      setTmx(String(headerWeather.temp_max));
+  // 날짜 변경, 전체 일정 개수 변경, 또는 그날 날씨 캐시 갱신 시에만 반영 (렌더 중 조정 패턴)
+  const viewDateStr = format(viewDate, "yyyy-MM-dd");
+  const weatherDefaultsKey = `${viewDateStr}|${tasks.length}|${dailyWeather[viewDateStr]?.fetched_at ?? ""}`;
+  const [appliedWeatherKey, setAppliedWeatherKey] = useState("");
+  if (weatherDefaultsKey !== appliedWeatherKey) {
+    setAppliedWeatherKey(weatherDefaultsKey);
+    if (headerWeather) {
+      if (headerWeather.weather) setManualWeather(headerWeather.weather);
+      if (headerWeather.temp_max !== undefined && headerWeather.temp_max !== null) setTmx(String(headerWeather.temp_max));
+      if (headerWeather.temp_min !== undefined && headerWeather.temp_min !== null) setTmn(String(headerWeather.temp_min));
     }
-    if (headerWeather.temp_min !== undefined && headerWeather.temp_min !== null) {
-      setTmn(String(headerWeather.temp_min));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewDate, tasks.length, dailyWeather]); // 날짜 변경, 전체 일정 개수 변경, 또는 날씨 캐시 로딩 시 실행
+  }
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean = false) => {
     const files = Array.from(e.target.files || []);
+    e.target.value = ""; // 같은 사진을 다시 골라도 onChange가 동작하도록 초기화
     if (files.length === 0) return;
 
-    // 이미지 압축 및 처리
-    const compressedFiles = await Promise.all(
-      files.map(file => compressImage(file))
-    );
+    // 이미지 압축 및 처리 (브라우저가 못 읽는 형식 등 실패 시 안내)
+    let compressedFiles: File[];
+    try {
+      compressedFiles = await Promise.all(files.map(file => compressImage(file)));
+    } catch {
+      triggerToast("⚠️ 사진을 불러오지 못했습니다. 다른 사진(JPG/PNG)으로 시도해 주세요.");
+      return;
+    }
 
     const newPreviews = compressedFiles.map(file => URL.createObjectURL(file));
 
@@ -705,8 +427,8 @@ export default function DailyView({
     setEditTitle(job.task);
     setEditDate(new Date(job.date));
     setEditWeather(job.weather || "맑음");
-    setEditTmx(job.temp_max ? String(job.temp_max) : "");
-    setEditTmn(job.temp_min ? String(job.temp_min) : "");
+    setEditTmx(job.temp_max != null && !isNaN(Number(job.temp_max)) ? String(job.temp_max) : "");
+    setEditTmn(job.temp_min != null && !isNaN(Number(job.temp_min)) ? String(job.temp_min) : "");
     setEditImageFiles([]);
     setEditImagePreviews([]);
     setEditExistingUrls(job.image_urls || []);
@@ -731,70 +453,9 @@ export default function DailyView({
     setEditRecurrence(null);
   };
 
-  const handleRecurrenceUpdateOption = (option: "single" | "all" | "following") => {
+  const handleRecurrenceUpdateOption = (option: RecurringScope) => {
     if (!pendingUpdateId || !pendingUpdates) return;
-
-    const [masterId, instDate] = pendingUpdateId.split('.');
-    const masterTask = tasks.find(t => t.id === masterId);
-
-    if (!masterTask) return;
-
-    if (option === "single") {
-      // 1. 이 일정만 수정
-      handleUpdateClick(pendingUpdateId, pendingUpdates, pendingNewImageFiles);
-    } else if (option === "all") {
-      // 2. 전체 반복 일정(마스터) 수정
-      const originalMasterDate = new Date(masterTask.date);
-      
-      if (pendingUpdates.date) {
-        const editDateTime = new Date(pendingUpdates.date);
-        originalMasterDate.setHours(editDateTime.getHours());
-        originalMasterDate.setMinutes(editDateTime.getMinutes());
-      }
-
-      const masterUpdates = {
-        ...pendingUpdates,
-        date: originalMasterDate.toISOString()
-      };
-
-      onUpdate(masterId, masterUpdates, pendingNewImageFiles);
-      triggerToast("🔄 모든 반복 일정이 일괄 변경되었습니다.");
-    } else if (option === "following") {
-      // 3. 이 일정과 이후 일정 일괄 수정 (구글 캘린더급 분절화 엔진)
-      // 3-1. 기존 마스터의 종료일을 오늘 직전일(어제)로 단축하여 마스터 자르기
-      const targetDate = new Date(viewDate.getFullYear(), viewDate.getMonth(), viewDate.getDate());
-      const yesterday = new Date(targetDate.getTime() - 24 * 60 * 60 * 1000);
-      
-      const prevRecurrence = {
-        type: masterTask.recurrence!.type,
-        interval: masterTask.recurrence!.interval || 1,
-        end_date: yesterday.toISOString()
-      };
-
-      // 기존 마스터 일정의 반복 범위를 과거로 잘라서 업데이트
-      onUpdate(masterId, { recurrence: prevRecurrence });
-
-      // 3-2. 오늘 날짜부터 기존 종료일까지의 신규 마스터 일정을 추가 발행
-      const newGroupId = `rec_${Date.now()}`;
-      const newRecurrence = {
-        type: pendingUpdates.recurrence?.type || masterTask.recurrence!.type,
-        interval: pendingUpdates.recurrence?.interval || masterTask.recurrence!.interval || 1,
-        end_date: masterTask.recurrence!.end_date // 원래 기존 마스터의 종료일까지 유지
-      };
-
-      onAdd(
-        pendingUpdates.task || masterTask.task,
-        pendingUpdates.date || new Date(viewDate.getFullYear(), viewDate.getMonth(), viewDate.getDate(), new Date(masterTask.date).getHours(), new Date(masterTask.date).getMinutes()).toISOString(),
-        pendingUpdates.weather !== undefined ? pendingUpdates.weather : masterTask.weather,
-        pendingUpdates.temp_max !== undefined ? Number(pendingUpdates.temp_max) : masterTask.temp_max,
-        pendingUpdates.temp_min !== undefined ? Number(pendingUpdates.temp_min) : masterTask.temp_min,
-        newGroupId,
-        pendingNewImageFiles,
-        newRecurrence
-      );
-
-      triggerToast("⏭️ 이 일정 및 향후 일정이 모두 일괄 변경되었습니다.");
-    }
+    onUpdate(pendingUpdateId, pendingUpdates, pendingNewImageFiles, option);
 
     // 펜딩 리셋 및 닫기
     setPendingUpdateId(null);
@@ -810,8 +471,8 @@ export default function DailyView({
       task: editTitle.trim(),
       date: editDate.toISOString(),
       weather: editWeather,
-      temp_max: editTmx ? parseFloat(editTmx) : undefined,
-      temp_min: editTmn ? parseFloat(editTmn) : undefined,
+      temp_max: editTmx ? parseFloat(editTmx) : null, // 빈칸이면 기존 값 삭제
+      temp_min: editTmn ? parseFloat(editTmn) : null,
       image_urls: editExistingUrls,
       feedback: editFeedback.trim() || "",
       feedback_tags: editFeedbackTags
@@ -820,7 +481,7 @@ export default function DailyView({
       ...(editRecurrence ? { recurrence: editRecurrence } : {})
     };
 
-    if (id.includes('.')) {
+    if (isVirtualId(id)) {
       // 가상 일정 수정을 저장할 때는 팝업을 먼저 오픈해 사용자 선택을 유도함
       setPendingUpdateId(id);
       setPendingUpdates(updates);
@@ -828,7 +489,7 @@ export default function DailyView({
       setShowRecurrenceUpdateModal(true);
     } else {
       // 일반 단발성 일정일 때는 아무런 대화상자 없이 바로 진행
-      handleUpdateClick(id, updates, editImageFiles);
+      onUpdate(id, updates, editImageFiles);
       setEditingId(null);
     }
   };
@@ -1240,7 +901,7 @@ export default function DailyView({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (canWrite) handleToggleClick(task.id!, !task.is_done);
+                        if (canWrite) onToggle(task.id!, !task.is_done);
                       }}
                       disabled={!canWrite}
                       className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shrink-0 ${task.is_done
@@ -1266,7 +927,7 @@ export default function DailyView({
                       )}
                       {canDelete && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); handleDeleteClick(task.id!); }}
+                          onClick={(e) => { e.stopPropagation(); onDelete(task.id!); }}
                           className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
                           title="삭제"
                         >
@@ -1408,7 +1069,7 @@ export default function DailyView({
                         <button
                           key={opt.value}
                           type="button"
-                          onClick={() => setRecurrenceType(opt.value as any)}
+                          onClick={() => setRecurrenceType(opt.value as typeof recurrenceType)}
                           className={`py-2 rounded-xl text-[10px] font-bold border transition-all ${recurrenceType === opt.value
                             ? "bg-[var(--foreground)] border-transparent text-[var(--background)] shadow-sm"
                             : "bg-[var(--input-bg)] border-[var(--card-border)] text-gray-400 hover:bg-[var(--card-bg)] hover:border-green-500/30"

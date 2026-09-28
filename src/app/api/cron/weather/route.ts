@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getKmaWeather, toWeatherLabel, getKstDateString } from "@/lib/weather";
+import { getKmaWeather, toWeatherLabel, getKstDateString, FARM_LAT, FARM_LNG } from "@/lib/weather";
 import { adminDb } from "@/lib/firebase-admin";
 
 export const dynamic = "force-dynamic";
@@ -15,8 +15,8 @@ export async function GET(request: Request) {
     }
   }
 
-  const lat = parseFloat(process.env.FARM_LAT || "36.3504");
-  const lng = parseFloat(process.env.FARM_LNG || "127.3845");
+  const lat = parseFloat(process.env.FARM_LAT || String(FARM_LAT));
+  const lng = parseFloat(process.env.FARM_LNG || String(FARM_LNG));
   const today = getKstDateString();
 
   try {
@@ -47,8 +47,8 @@ export async function GET(request: Request) {
     console.log(`[날씨 Cron 성공] ${today} 날씨: ${weather}, 최고: ${tempMax}℃, 최저: ${tempMin}℃`);
 
     return NextResponse.json({ success: true, date: today, weather, temp_max: tempMax, temp_min: tempMin });
-  } catch (error: any) {
+  } catch (error) {
     console.error("날씨 Cron 실행 에러:", error);
-    return NextResponse.json({ success: false, error: error.message || "날씨 Cron 실행 에러" }, { status: 500 });
+    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "날씨 Cron 실행 에러" }, { status: 500 });
   }
 }

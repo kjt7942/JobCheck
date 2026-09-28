@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Wrench, Droplet, CheckCircle, Info, CalendarClock, Trash2, ShieldCheck, ShieldAlert, Sprout } from "lucide-react";
+import { CheckCircle, Info, CalendarClock, Trash2, ShieldCheck, ShieldAlert, Sprout } from "lucide-react";
 import { format, addDays, differenceInCalendarDays } from "date-fns";
 import { useApp } from "@/providers/AppProvider";
+import ConfirmModal from "@/components/ConfirmModal";
 import { sprayService } from "@/services/sprayService";
 import { jobService } from "@/services/jobService";
 import { SprayRecord } from "@/types";
@@ -24,6 +25,7 @@ const GRAPE_STANDARD_STAGES: { monthDay: string; task: string }[] = [
 
 export default function ToolsView() {
   const { user, settings, showToast } = useApp();
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null); // 삭제 확인 모달 대상
   const canRead = settings?.role === 'admin' || settings?.permissions?.canRead;
   const canWrite = settings?.role === 'admin' || settings?.permissions?.canWrite;
   const canDelete = settings?.role === 'admin' || settings?.permissions?.canDelete;
@@ -47,11 +49,14 @@ export default function ToolsView() {
     return () => unsubscribe();
   }, [user, canRead]);
 
-  const harvestReadyDate = format(addDays(new Date(sprayDate), phiDays || 0), "yyyy-MM-dd");
+  // 날짜 입력칸을 비우면 Invalid Date → format()이 예외를 던져 화면 전체가 죽으므로 방어
+  const sprayDateObj = new Date(sprayDate);
+  const harvestReadyDate = isNaN(sprayDateObj.getTime()) ? null : addDays(sprayDateObj, phiDays || 0);
 
   const handleAddSprayRecord = async () => {
     if (!canWrite) { showToast("등록 권한이 없습니다.", "error"); return; }
     if (!chemicalName.trim()) { showToast("약제명을 입력해 주세요.", "error"); return; }
+    if (!harvestReadyDate) { showToast("살포일을 입력해 주세요.", "error"); return; }
     try {
       await sprayService.addSprayRecord({
         chemical_name: chemicalName.trim(),
@@ -369,7 +374,7 @@ export default function ToolsView() {
 
             <div className="flex flex-col justify-center bg-orange-500/10 rounded-2xl border-2 border-dashed border-orange-500/20 p-4 space-y-2 text-center">
               <span className="text-[10px] font-bold text-orange-700 bg-orange-500/20 px-2 py-0.5 rounded-md uppercase tracking-wider inline-block mx-auto">수확 가능일</span>
-              <h4 className="text-2xl font-black text-orange-600">{format(new Date(harvestReadyDate), "M월 d일")}</h4>
+              <h4 className="text-2xl font-black text-orange-600">{harvestReadyDate ? format(harvestReadyDate, "M월 d일") : "-"}</h4>
               <p className="text-[11px] text-gray-500">살포일 + 안전사용기준 {phiDays}일 이후부터 수확 가능</p>
             </div>
           </div>
@@ -400,7 +405,7 @@ export default function ToolsView() {
                     </div>
                     {canDelete && (
                       <button
-                        onClick={() => handleDeleteSprayRecord(r.id!)}
+                        onClick={() => setPendingDeleteId(r.id!)}
                         className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all shrink-0"
                         title="삭제"
                       >
@@ -466,7 +471,15 @@ export default function ToolsView() {
           )}
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={!!pendingDeleteId}
+        title="살포 이력 삭제"
+        message="이 살포 이력을 삭제할까요? 삭제된 내용은 복구할 수 없습니다."
+        confirmText="삭제하기"
+        onConfirm={() => { const id = pendingDeleteId!; setPendingDeleteId(null); handleDeleteSprayRecord(id); }}
+        onCancel={() => setPendingDeleteId(null)}
+      />
     </div>
   );
 }
-

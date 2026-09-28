@@ -1,14 +1,22 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // jobs/{jobId}/... : 일정 첨부 이미지. 로그인한 사용자만 읽기/쓰기/삭제 가능.
-    match /jobs/{jobId}/{fileName} {
-      allow read, write, delete: if request.auth != null;
+    // Firestore user_settings의 권한(canRead/canWrite/canDelete)과 동일한 기준을 Storage에도 적용.
+    // (로그인만 한 미승인 가입자가 첨부 이미지를 보거나 지우지 못하도록 차단)
+    function userSettings() {
+      return firestore.get(/databases/(default)/documents/user_settings/$(request.auth.uid)).data;
+    }
+    function can(perm) {
+      return request.auth != null && (userSettings().role == 'admin' || userSettings().permissions[perm] == true);
     }
 
-    // farmRecords/{recordId}/... : 기록부(영수증/거래명세서 등) 첨부 이미지. 로그인한 사용자만 읽기/쓰기/삭제 가능.
-    match /farmRecords/{recordId}/{fileName} {
-      allow read, write, delete: if request.auth != null;
+    // jobs/{jobId}/... : 일정 첨부 이미지, farmRecords/{recordId}/... : 기록부(영수증 등) 첨부 이미지
+    match /{folder}/{docId}/{fileName} {
+      allow read: if (folder == 'jobs' || folder == 'farmRecords') && can('canRead');
+      allow create, update: if (folder == 'jobs' || folder == 'farmRecords') && can('canWrite')
+                            && request.resource.size < 10 * 1024 * 1024
+                            && request.resource.contentType.matches('image/.*');
+      allow delete: if (folder == 'jobs' || folder == 'farmRecords') && can('canDelete');
     }
 
     // 그 외 경로는 기본적으로 접근 차단.

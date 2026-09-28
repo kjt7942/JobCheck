@@ -6,6 +6,7 @@ import { ko } from "date-fns/locale";
 import { Job, ImprovementNote } from "@/types";
 import { Search, StickyNote, Tag, Calendar, AlertCircle, Plus, Trash2, PenLine, Pencil, Check, X } from "lucide-react";
 import { useApp } from "@/providers/AppProvider";
+import ConfirmModal from "@/components/ConfirmModal";
 import { improvementNoteService } from "@/services/improvementNoteService";
 import { jobService } from "@/services/jobService";
 
@@ -27,6 +28,7 @@ interface NoteEntry {
 
 export default function NotesArchiveView({ tasks }: NotesArchiveViewProps) {
   const { user, settings, showToast } = useApp();
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null); // 삭제 확인 모달 대상
   const canWrite = settings?.role === 'admin' || settings?.permissions?.canWrite;
   const canDelete = settings?.role === 'admin' || settings?.permissions?.canDelete;
 
@@ -277,7 +279,7 @@ export default function NotesArchiveView({ tasks }: NotesArchiveViewProps) {
               "검색어나 필터 조건을 변경해 보세요."
             ) : (
               <>
-                위에서 바로 메모를 남기거나, 일정 수정 화면에서 '영농 피드백'을<br />
+                위에서 바로 메모를 남기거나, 일정 수정 화면에서 &lsquo;영농 피드백&rsquo;을<br />
                 남겨주시면 이곳에 기록되어 내년에 큰 자산이 됩니다!
               </>
             )}
@@ -315,7 +317,7 @@ export default function NotesArchiveView({ tasks }: NotesArchiveViewProps) {
                     )}
                     {entry.source === "note" && !isEditing && canDelete && (
                       <button
-                        onClick={() => handleDeleteMemo(entry.noteId!)}
+                        onClick={() => setPendingDeleteId(entry.noteId!)}
                         className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
                         title="삭제"
                       >
@@ -388,6 +390,15 @@ export default function NotesArchiveView({ tasks }: NotesArchiveViewProps) {
           })}
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={!!pendingDeleteId}
+        title="메모 삭제"
+        message="이 메모를 삭제할까요? 삭제된 내용은 복구할 수 없습니다."
+        confirmText="삭제하기"
+        onConfirm={() => { const id = pendingDeleteId!; setPendingDeleteId(null); handleDeleteMemo(id); }}
+        onCancel={() => setPendingDeleteId(null)}
+      />
     </div>
   );
 }

@@ -10,9 +10,15 @@ export class FarmRecordService {
     async addFarmRecord(data: Omit<FarmRecord, "id" | "created_at">, imageFiles?: File[]): Promise<string> {
         const id = await firestoreRepo.addFarmRecord(data);
 
+        // 이미지 업로드 실패 시 방금 만든 기록을 되돌려, 재시도 때 중복 기록이 생기지 않게 함
         if (imageFiles && imageFiles.length > 0) {
-            const urls = await uploadImagesToStorage(`farmRecords/${id}`, imageFiles);
-            await firestoreRepo.updateFarmRecord(id, { image_urls: urls });
+            try {
+                const urls = await uploadImagesToStorage(`farmRecords/${id}`, imageFiles);
+                await firestoreRepo.updateFarmRecord(id, { image_urls: urls });
+            } catch (uploadError) {
+                await this.deleteFarmRecord(id).catch(() => {});
+                throw uploadError;
+            }
         }
 
         return id;

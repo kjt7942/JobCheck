@@ -12,46 +12,27 @@ import {
 import { auth } from "@/lib/firebase";
 import { firestoreRepo } from "@/repo/firestoreRepository";
 import { UserSettings } from "@/types";
+import { FARM_LAT, FARM_LNG } from "@/lib/weather";
 
 export class AuthService {
   /**
-   * 인증 상태 변경을 감시하고, 사용자가 로그인하면 설정을 함께 가져옵니다.
+   * 인증 상태 변경을 감시합니다. (사용자 설정은 AppProvider에서 실시간 구독)
    */
-  subscribeAuthStatus(callback: (user: User | null, settings: UserSettings | null) => void) {
-    return onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        // 사용자가 로그인한 경우 설정 로드
-        const settings = await firestoreRepo.getUserSettings(user.uid);
-        callback(user, settings);
-      } else {
-        callback(null, null);
-      }
-    });
+  subscribeAuthStatus(callback: (user: User | null) => void) {
+    return onAuthStateChanged(auth, callback);
   }
 
   /**
-   * 로그인
+   * 신규 사용자의 초기 설정(권한 모두 false)을 저장하고 관리자에게 승인 요청 알림을 남깁니다.
    */
-  async login(email: string, pass: string) {
-    const userCredential = await signInWithEmailAndPassword(auth, email, pass);
-    return userCredential.user;
-  }
-
-  /**
-   * 회원가입 (계정 추가) 및 초기 설정 저장
-   */
-  async signup(email: string, pass: string, userName: string) {
-    const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
-    const user = userCredential.user;
-
-    // 초기 사용자 설정 생성 (보안을 위해 기본 권한은 모두 false)
+  private async createInitialSettings(uid: string, email: string, userName: string): Promise<UserSettings> {
     const initialSettings: UserSettings = {
-      user_id: user.uid,
-      email: email,
+      user_id: uid,
+      email,
       user_name: userName,
       farm_name: "꿀송이농장",
-      latitude: 37.5665,
-      longitude: 126.9780,
+      latitude: FARM_LAT,
+      longitude: FARM_LNG,
       location: "문경시",
       start_day: 0,
       theme: 'light',
@@ -70,74 +51,49 @@ export class AuthService {
     await firestoreRepo.addNotification({
       type: 'NEW_USER',
       title: '새로운 가입 승인 대기',
-      message: `${initialSettings.user_name}(${initialSettings.email})님이 가입했습니다. 권한 승인이 필요합니다.`,
-      user_id: user.uid
+      message: `${userName}(${email})님이 가입했습니다. 권한 승인이 필요합니다.`,
+      user_id: uid
     });
 
-    return { user, settings: initialSettings };
+    return initialSettings;
+  }
+
+  /**
+   * 소셜 로그인 직후: 설정 문서가 없으면(첫 로그인) 초기 설정을 생성합니다.
+   */
+  private async ensureSettings(user: User): Promise<UserSettings> {
+    const existingSettings = await firestoreRepo.getUserSettings(user.uid);
+    return existingSettings ?? this.createInitialSettings(user.uid, user.email || "", user.displayName || "농장 가족");
+  }
+
+  /**
+   * 로그인
+   */
+  async login(email: string, pass: string) {
+    const userCredential = await signInWithEmailAndPassword(auth, email, pass);
+    return userCredential.user;
+  }
+
+  /**
+   * 회원가입 (계정 추가) 및 초기 설정 저장
+   */
+  async signup(email: string, pass: string, userName: string) {
+    const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
+    const user = userCredential.user;
+    const settings = await this.createInitialSettings(user.uid, email, userName);
+    return { user, settings };
   }
 
   /**
    * 구글 로그인
    */
   async loginWithGoogle() {
-    try {
-      console.log("AuthService: Starting Google Login with Popup...");
-      const provider = new GoogleAuthProvider();
-      // 팝업 요청 시 추가 옵션 설정 가능
-      provider.setCustomParameters({ prompt: 'select_account' });
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
 
-      const userCredential = await signInWithPopup(auth, provider);
-      const user = userCredential.user;
-      console.log("AuthService: Google Login Success, User:", user.uid);
-
-      // 기존 설정이 있는지 확인
-      const existingSettings = await firestoreRepo.getUserSettings(user.uid);
-
-      if (!existingSettings) {
-        console.log("AuthService: No existing settings found, creating initial settings...");
-        // 첫 로그인이라면 초기 설정 생성
-        const initialSettings: UserSettings = {
-          user_id: user.uid,
-          email: user.email || "",
-          user_name: user.displayName || "농장 가족",
-          farm_name: "꿀송이농장",
-          latitude: 37.5665,
-          longitude: 126.9780,
-          location: "문경시",
-          start_day: 0,
-          theme: 'light',
-          role: 'user',
-          permissions: {
-            canRead: false,
-            canWrite: false,
-            canDelete: false
-          },
-          updated_at: Date.now()
-        };
-        await firestoreRepo.saveUserSettings(initialSettings);
-
-        // 관리자에게 새 사용자 가입 알림
-        await firestoreRepo.addNotification({
-          type: 'NEW_USER',
-          title: '새로운 가입 승인 대기',
-          message: `${initialSettings.user_name}(${initialSettings.email})님이 가입했습니다. 권한 승인이 필요합니다.`,
-          user_id: user.uid
-        });
-
-        return { user, settings: initialSettings };
-      }
-
-      console.log("AuthService: Existing settings loaded.");
-      return { user, settings: existingSettings };
-    } catch (error: any) {
-      console.error("AuthService: Google Login Error Details:", {
-        code: error.code,
-        message: error.message,
-        customData: error.customData
-      });
-      throw error; // 컴포넌트에서 처리하도록 다시 던짐
-    }
+    const userCredential = await signInWithPopup(auth, provider);
+    const user = userCredential.user;
+    return { user, settings: await this.ensureSettings(user) };
   }
 
   /**
@@ -153,61 +109,18 @@ export class AuthService {
    * 리다이렉트 결과 처리
    */
   async handleRedirectResult() {
-    try {
-      const result = await getRedirectResult(auth);
-      if (result) {
-        const user = result.user;
-        console.log("AuthService: Redirect login success:", user.uid);
-
-        const existingSettings = await firestoreRepo.getUserSettings(user.uid);
-        if (!existingSettings) {
-          const initialSettings: UserSettings = {
-            user_id: user.uid,
-            email: user.email || "",
-            user_name: user.displayName || "농장 가족",
-            farm_name: "꿀송이농장",
-            latitude: 37.5665,
-            longitude: 126.9780,
-            location: "문경시",
-            start_day: 0,
-            theme: 'light',
-            role: 'user',
-            permissions: {
-              canRead: false,
-              canWrite: false,
-              canDelete: false
-            },
-            updated_at: Date.now()
-          };
-          await firestoreRepo.saveUserSettings(initialSettings);
-
-          // 관리자에게 새 사용자 가입 알림
-          await firestoreRepo.addNotification({
-            type: 'NEW_USER',
-            title: '새로운 가입 승인 대기',
-            message: `${initialSettings.user_name}(${initialSettings.email})님이 가입했습니다. 권한 승인이 필요합니다.`,
-            user_id: user.uid
-          });
-        }
-        return result;
-      }
-      return null;
-    } catch (error) {
-      console.error("AuthService: Redirect result error:", error);
-      throw error;
+    const result = await getRedirectResult(auth);
+    if (result) {
+      await this.ensureSettings(result.user);
     }
+    return result;
   }
 
   /**
    * 로그아웃
    */
   async logout() {
-    try {
-      await signOut(auth);
-    } catch (error) {
-      console.error("AuthService: Logout Error:", error);
-      throw error;
-    }
+    await signOut(auth);
   }
 
   /**

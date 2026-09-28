@@ -29,7 +29,7 @@ export async function GET() {
       fetched_at_iso: new Date(data.fetched_at).toISOString(),
       minutes_since_fetch: minutesSinceFetch
     });
-  } catch (error: any) {
-    return NextResponse.json({ exists: false, date: today, error: error.message || String(error) }, { status: 500 });
+  } catch (error) {
+    return NextResponse.json({ exists: false, date: today, error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
 }

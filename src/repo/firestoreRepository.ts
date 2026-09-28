@@ -12,8 +12,7 @@ import {
   orderBy,
   onSnapshot,
   Timestamp,
-  getCountFromServer,
-  limit
+  deleteField
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Job, UserSettings, DailyWeather, SprayRecord, FarmRecord, ImprovementNote } from "@/types";
@@ -63,12 +62,12 @@ export class FirestoreRepository {
         map[d.id] = d.data() as DailyWeather;
       });
       callback(map);
-    });
+    }, (e) => console.error('Firestore 구독 오류:', e));
   }
 
   // --- Notifications ---
 
-  async addNotification(data: any): Promise<void> {
+  async addNotification(data: Record<string, unknown>): Promise<void> {
     await addDoc(this.notificationsCol, {
       ...data,
       created_at: Date.now(),
@@ -80,7 +79,7 @@ export class FirestoreRepository {
     const q = query(this.notificationsCol, where("read", "==", false));
     return onSnapshot(q, (snapshot) => {
       callback(snapshot.size);
-    });
+    }, (e) => console.error('Firestore 구독 오류:', e));
   }
 
   async markAllNotificationsAsRead(): Promise<void> {
@@ -105,6 +104,21 @@ export class FirestoreRepository {
       } as UserSettings;
     }
     return null;
+  }
+
+  /**
+   * 본인 설정 문서를 실시간 구독합니다. (관리자가 권한을 승인하면 새로고침 없이 즉시 반영)
+   */
+  subscribeUserSettings(uid: string, callback: (settings: UserSettings | null) => void, onError?: (e: Error) => void): () => void {
+    return onSnapshot(doc(this.settingsCol, uid), (docSnap) => {
+      if (!docSnap.exists()) { callback(null); return; }
+      const data = docSnap.data();
+      callback({
+        ...data,
+        permissions: data.permissions || { canRead: false, canWrite: false, canDelete: false },
+        role: data.role || 'user'
+      } as UserSettings);
+    }, onError);
   }
 
   async saveUserSettings(settings: UserSettings): Promise<void> {
@@ -155,7 +169,7 @@ export class FirestoreRepository {
 
   async getJobs(date?: string): Promise<Job[]> {
     // 모든 유저의 데이터를 공유하므로 user_id 필터 제거
-    let q = query(
+    const q = query(
       this.jobsCol,
       orderBy("created_at", "asc")
     );
@@ -184,8 +198,8 @@ export class FirestoreRepository {
     return allJobs;
   }
 
-  async subscribeJobs(callback: (jobs: Job[]) => void, date?: string): Promise<() => void> {
-    let q = query(
+  async subscribeJobs(callback: (jobs: Job[]) => void, date?: string, onError?: (e: Error) => void): Promise<() => void> {
+    const q = query(
       this.jobsCol,
       orderBy("created_at", "asc")
     );
@@ -210,17 +224,23 @@ export class FirestoreRepository {
       } else {
         callback(allJobs);
       }
-    });
+    }, onError);
   }
 
-  private cleanUndefined(obj: any): any {
-    const cleaned = { ...obj };
-    Object.keys(cleaned).forEach(key => {
-      if (cleaned[key] === undefined) {
-        delete cleaned[key];
-      }
-    });
-    return cleaned;
+  // Firestore는 undefined 값을 거부하므로 저장 전에 제거 (NaN 숫자, 신규 문서의 null도 함께 제거)
+  private cleanUndefined<T extends object>(obj: T): T {
+    return Object.fromEntries(
+      Object.entries(obj).filter(([, v]) => v !== undefined && v !== null && !(typeof v === "number" && isNaN(v)))
+    ) as T;
+  }
+
+  // 수정용: null은 "필드 삭제"로 변환 (예: 기온 칸을 비우고 저장)
+  private toUpdateData<T extends object>(obj: T) {
+    return Object.fromEntries(
+      Object.entries(obj)
+        .filter(([, v]) => v !== undefined && !(typeof v === "number" && isNaN(v)))
+        .map(([k, v]) => [k, v === null ? deleteField() : v])
+    );
   }
 
   async addJob(job: Omit<Job, "id" | "created_at">): Promise<string> {
@@ -247,9 +267,7 @@ export class FirestoreRepository {
   }
 
   async updateJob(id: string, updates: Partial<Job>): Promise<void> {
-    const docRef = doc(this.jobsCol, id);
-    const cleanedUpdates = this.cleanUndefined(updates);
-    await updateDoc(docRef, cleanedUpdates);
+    await updateDoc(doc(this.jobsCol, id), this.toUpdateData(updates));
   }
 
   async deleteJob(id: string): Promise<void> {
@@ -263,7 +281,7 @@ export class FirestoreRepository {
     const q = query(this.sprayRecordsCol, orderBy("spray_date", "desc"));
     return onSnapshot(q, (snapshot) => {
       callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as SprayRecord)));
-    });
+    }, (e) => console.error('Firestore 구독 오류:', e));
   }
 
   async addSprayRecord(data: Omit<SprayRecord, "id" | "created_at">): Promise<string> {
@@ -282,7 +300,7 @@ export class FirestoreRepository {
     const q = query(this.farmRecordsCol, orderBy("date", "desc"));
     return onSnapshot(q, (snapshot) => {
       callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as FarmRecord)));
-    });
+    }, (e) => console.error('Firestore 구독 오류:', e));
   }
 
   async addFarmRecord(data: Omit<FarmRecord, "id" | "created_at">): Promise<string> {
@@ -306,7 +324,7 @@ export class FirestoreRepository {
     const q = query(this.improvementNotesCol, orderBy("created_at", "desc"));
     return onSnapshot(q, (snapshot) => {
       callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as ImprovementNote)));
-    });
+    }, (e) => console.error('Firestore 구독 오류:', e));
   }
 
   async addImprovementNote(data: Omit<ImprovementNote, "id" | "created_at">): Promise<string> {

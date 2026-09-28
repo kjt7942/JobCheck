@@ -2,6 +2,10 @@
  * 기상청 위경도 -> 격자(nx, ny) 변환 및 날씨 정보 조회 서비스
  */
 
+// 꿀송이농장 위치 (경북 문경시 산양면 금천로 142-14) — 설정/환경변수가 없을 때의 기본 좌표
+export const FARM_LAT = 36.6223;
+export const FARM_LNG = 128.2509;
+
 const RE = 6371.00877; // 지구 반경(km)
 const GRID = 5.0; // 격자 간격(km)
 const SLAT1 = 30.0; // 투영 위도1(degree)
@@ -75,14 +79,27 @@ export async function getKmaWeather(lat: number, lng: number, date: string, targ
   // base_date: YYYYMMDD (발표 기준일 = 예보를 조회할 때 사용하는 발표 시각의 날짜)
   // target: 실제로 알고 싶은 날짜 (오늘 or 최대 2~3일 뒤 미래 날짜)
   // 기상청 단기예보는 0200, 0500, 0800, 1100, 1400, 1700, 2000, 2300에 발표
-  const baseDate = date.replace(/-/g, '').slice(0, 8);
+  let baseDate = date.replace(/-/g, '').slice(0, 8);
   const targetFcstDate = targetDate.replace(/-/g, '').slice(0, 8);
-  const baseTime = "0200"; // 고정 발표 시각 (최저/최고 기온 포함용)
+  let baseTime = "0200"; // 고정 발표 시각 (최저/최고 기온 포함용)
+
+  // 02시 발표분은 02:10 이후에야 조회 가능 → 오늘 00:00~02:14(KST)에는 전날 23시 발표분 사용
+  // (전날 23시 발표에도 다음날 최저/최고 기온(TMN/TMX)이 포함됨)
+  const now = new Date();
+  const kstMinutes = ((now.getUTCHours() + 9) % 24) * 60 + now.getUTCMinutes();
+  if (date === getKstDateString(now) && kstMinutes < 2 * 60 + 15) {
+    baseDate = getKstDateString(new Date(now.getTime() - 24 * 60 * 60 * 1000)).replace(/-/g, '');
+    baseTime = "2300";
+  }
 
   const url = `https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0/getVilageFcst?authKey=${authKey}&base_date=${baseDate}&base_time=${baseTime}&nx=${nx}&ny=${ny}&dataType=JSON&numOfRows=1000`;
 
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!response.ok) {
+      console.error("KMA API HTTP Error:", response.status);
+      return null;
+    }
     const data = await response.json();
 
     if (!data.response || !data.response.body || !data.response.body.items) {
@@ -91,7 +108,7 @@ export async function getKmaWeather(lat: number, lng: number, date: string, targ
     }
 
     // 응답에는 발표일 이후 며칠치 예보가 함께 내려오므로, 실제 알고 싶은 날짜(targetFcstDate)의 항목만 사용
-    const items = (data.response.body.items.item as any[]).filter(item => item.fcstDate === targetFcstDate);
+    const items = (data.response.body.items.item as { category: string; fcstDate: string; fcstTime: string; fcstValue: string }[]).filter(item => item.fcstDate === targetFcstDate);
 
     let tmn: string | undefined;
     let tmx: string | undefined;

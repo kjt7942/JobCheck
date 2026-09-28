@@ -1,17 +1,21 @@
 import { NextResponse } from "next/server";
-import { getKmaWeather, toWeatherLabel, getKstDateString } from "@/lib/weather";
+import { getKmaWeather, toWeatherLabel, getKstDateString, FARM_LAT, FARM_LNG } from "@/lib/weather";
+import { verifyRequestUser } from "@/lib/firebase-admin";
 
 export const dynamic = "force-dynamic";
 
 // 🌍 기상청 공식 단기예보(VilageFcst) API를 이용한 날씨 조회 라우트 핸들러
 export async function GET(request: Request) {
+  if (!(await verifyRequestUser(request, "canRead"))) {
+    return NextResponse.json({ success: false, error: "Unauthorized", message: "날씨와 온도를 직접 입력해 주세요!" }, { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
   const latParam = searchParams.get("lat");
   const lngParam = searchParams.get("lng");
 
-  // 기본값: 문경시 산양면
-  const lat = latParam ? parseFloat(latParam) : 36.3504;
-  const lng = lngParam ? parseFloat(lngParam) : 127.3845;
+  const lat = latParam ? parseFloat(latParam) : FARM_LAT;
+  const lng = lngParam ? parseFloat(lngParam) : FARM_LNG;
 
   if (isNaN(lat) || isNaN(lng)) {
     return NextResponse.json({
@@ -25,6 +29,9 @@ export async function GET(request: Request) {
   // date 파라미터가 있으면 해당 날짜(최대 2~3일 뒤 미래) 예보를 조회, 없으면 오늘
   const hasExplicitDate = searchParams.has("date");
   const targetDate = searchParams.get("date") || today;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) {
+    return NextResponse.json({ success: false, error: "잘못된 날짜 형식입니다." }, { status: 400 });
+  }
 
   try {
     const info = await getKmaWeather(lat, lng, today, targetDate);
@@ -54,11 +61,11 @@ export async function GET(request: Request) {
       raw_sky: info!.sky,
       raw_pty: info!.pty
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("기상청 날씨 조회 에러:", error);
     return NextResponse.json({
       success: false,
-      error: error.message || "기상청 날씨 조회 에러",
+      error: error instanceof Error ? error.message : "기상청 날씨 조회 에러",
       message: "날씨 연동 서버와의 연결에 실패했습니다. 날씨 정보를 직접 수동으로 작성해 주세요!"
     }, { status: 500 });
   }

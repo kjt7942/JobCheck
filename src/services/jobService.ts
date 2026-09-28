@@ -1,6 +1,6 @@
 import { Job } from "@/types";
 import { firestoreRepo } from "@/repo/firestoreRepository";
-import { uploadImagesToStorage, deleteFolderImages } from "@/utils/imageUtils";
+import { uploadImagesToStorage, deleteFolderImages, deleteImagesByUrl, storagePathOf } from "@/utils/imageUtils";
 
 export class JobService {
     /**
@@ -18,8 +18,8 @@ export class JobService {
     /**
      * 실시간 일정 구독을 설정합니다.
      */
-    async subscribeJobs(callback: (jobs: Job[]) => void, date?: string) {
-        return await firestoreRepo.subscribeJobs(callback, date);
+    async subscribeJobs(callback: (jobs: Job[]) => void, date?: string, onError?: (e: Error) => void) {
+        return await firestoreRepo.subscribeJobs(callback, date, onError);
     }
 
     /**
@@ -34,10 +34,15 @@ export class JobService {
                 ? await firestoreRepo.setJobInstance(`${jobData.group_id}_${jobData.instance_date}`, jobData)
                 : await firestoreRepo.addJob(jobData);
 
-            // 2. 이미지가 있으면 업로드 후 업데이트
+            // 2. 이미지가 있으면 업로드 후 업데이트 (실패 시 방금 만든 문서를 되돌려, 재시도 때 중복 등록 방지)
             if (imageFiles && imageFiles.length > 0) {
-                const urls = await uploadImagesToStorage(`jobs/${jobId}`, imageFiles);
-                await this.updateJob(jobId, { image_urls: urls });
+                try {
+                    const urls = await uploadImagesToStorage(`jobs/${jobId}`, imageFiles);
+                    await firestoreRepo.updateJob(jobId, { image_urls: [...(jobData.image_urls ?? []), ...urls] });
+                } catch (uploadError) {
+                    await this.deleteJob(jobId).catch(() => {});
+                    throw uploadError;
+                }
             }
 
             return jobId;
@@ -66,7 +71,7 @@ export class JobService {
                     baseUrls = currentJob?.image_urls || [];
                 }
                 
-                updates.image_urls = [...baseUrls, ...newUrls];
+                updates = { ...updates, image_urls: [...baseUrls, ...newUrls] };
             }
 
             await firestoreRepo.updateJob(id, updates);
@@ -79,16 +84,28 @@ export class JobService {
     /**
      * 일정을 삭제합니다 (관련 이미지도 모두 삭제).
      */
-    async deleteJob(id: string): Promise<void> {
+    async deleteJob(id: string, keepUrls: string[] = []): Promise<void> {
         try {
-            // 1. Storage 이미지 삭제
-            await deleteFolderImages(`jobs/${id}`);
+            // 1. Storage 이미지 삭제 (다른 일정이 참조 중인 파일은 유지)
+            await deleteFolderImages(`jobs/${id}`, keepUrls);
             // 2. Firestore 데이터 삭제
             await firestoreRepo.deleteJob(id);
         } catch (error) {
             console.error("JobService: Error deleting job", error);
             throw error;
         }
+    }
+
+    /**
+     * 일정에서 빠진 사진 중 이 일정 폴더에 있고 다른 일정이 참조하지 않는 파일을 Storage에서 삭제합니다.
+     */
+    async deleteUnusedImages(id: string, removedUrls: string[], stillUsedUrls: string[]): Promise<void> {
+        const used = new Set(stillUsedUrls.map(storagePathOf));
+        const targets = removedUrls.filter(u => {
+            const path = storagePathOf(u);
+            return path.startsWith(`jobs/${id}/`) && !used.has(path);
+        });
+        if (targets.length > 0) await deleteImagesByUrl(targets);
     }
 
     /**

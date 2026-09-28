@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { format, startOfYear, eachMonthOfInterval, isSameMonth, eachDayOfInterval } from "date-fns";
 import { ko } from "date-fns/locale";
-import { CalendarRange, Target, CheckCircle2, Sprout, Clock, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarRange, Target, CheckCircle2, Sprout, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from "lucide-react";
 import { Job } from "@/types";
+import { buildOverrideIndex, occursOn, overrideKey } from "@/lib/recurrence";
 
 export default function YearlyView({
   tasks,
@@ -17,6 +18,8 @@ export default function YearlyView({
     start: yearStart,
     end: new Date(currentYear, 11, 31),
   });
+
+  const overrideIndex = useMemo(() => buildOverrideIndex(tasks), [tasks]);
 
   const handleMonthClick = (month: Date) => {
     if (selectedMonth && isSameMonth(selectedMonth, month)) {
@@ -87,54 +90,15 @@ export default function YearlyView({
             
             const taskDate = new Date(t.date);
             
-            // 🔄 반복 마스터 일정인 경우: 해당 월에 취소되지 않고 활성화된 날이 하루라도 있는지 판정
+            // 🔄 반복 마스터 일정인 경우: 해당 월에 취소/개별수정되지 않고 발생하는 날이 하루라도 있는지 판정
             if (t.recurrence) {
-              const start = new Date(t.date);
-              const end = new Date(t.recurrence.end_date);
-              
-              const monthStart = new Date(month.getFullYear(), month.getMonth(), 1);
-              const monthEnd = new Date(month.getFullYear(), month.getMonth() + 1, 0, 23, 59, 59);
-              
-              if (end < monthStart || start > monthEnd) return false;
-              
-              // 해당 월 내에 이미 대장님이 '이 일정만 삭제' 처리한 가상 날짜의 목록 수집
-              const cancelledDaysInMonth = new Set(
-                tasks
-                  .filter(cand => cand.is_cancelled && cand.group_id === t.group_id && isSameMonth(new Date(cand.date), month))
-                  .map(cand => format(new Date(cand.date), "yyyy-MM-dd"))
-              );
-              
-              let hasActiveDay = false;
-              const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
-              const startDateOnly = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-              
-              for (const day of daysInMonth) {
-                if (day < startDateOnly || day > end) continue;
-                
-                const dayStr = format(day, "yyyy-MM-dd");
-                if (cancelledDaysInMonth.has(dayStr)) continue; // 이 날짜는 취소됨!
-                
-                // 반복 주기에 부합하는 날인지 검사
-                const diffDays = Math.floor((day.getTime() - startDateOnly.getTime()) / (1000 * 60 * 60 * 24));
-                const interval = t.recurrence.interval || 1;
-                
-                if (t.recurrence.type === "DAILY") {
-                  if (diffDays % interval === 0) { hasActiveDay = true; break; }
-                } else if (t.recurrence.type === "WEEKLY") {
-                  if (diffDays % (7 * interval) === 0) { hasActiveDay = true; break; }
-                } else if (t.recurrence.type === "BIWEEKLY") {
-                  if (diffDays % (14 * interval) === 0) { hasActiveDay = true; break; }
-                } else if (t.recurrence.type === "MONTHLY") {
-                  const diffMonths = (day.getFullYear() - start.getFullYear()) * 12 + (day.getMonth() - start.getMonth());
-                  if (diffMonths % interval === 0 && day.getDate() === start.getDate()) { hasActiveDay = true; break; }
-                } else if (t.recurrence.type === "CUSTOM") {
-                  if (diffDays % interval === 0) { hasActiveDay = true; break; }
-                }
-              }
-              
-              return hasActiveDay;
+              const monthEnd = new Date(month.getFullYear(), month.getMonth() + 1, 0);
+              return eachDayOfInterval({ start: month, end: monthEnd }).some(day => {
+                const key = overrideKey(t.group_id, format(day, "yyyy-MM-dd"));
+                return occursOn(t, day) && !overrideIndex.cancelled.has(key) && !overrideIndex.instances.has(key);
+              });
             }
-            
+
             // 일반 단발성 일정
             return isSameMonth(taskDate, month);
           });

@@ -18,4 +18,21 @@ if (!admin.apps.length) {
 
 export const adminDb = admin.firestore();
 export const adminAuth = admin.auth();
+
+/**
+ * API 라우트용: Authorization: Bearer <Firebase ID 토큰>을 검증하고,
+ * 관리자이거나 권한(permission)을 가진 사용자일 때만 uid를 반환합니다. 아니면 null.
+ */
+export async function verifyRequestUser(request: Request, permission: 'canRead' | 'canWrite'): Promise<string | null> {
+  const token = request.headers.get("authorization")?.match(/^Bearer (.+)$/)?.[1];
+  if (!token) return null;
+  try {
+    const { uid } = await adminAuth.verifyIdToken(token);
+    const settings = (await adminDb.collection("user_settings").doc(uid).get()).data();
+    return settings?.role === 'admin' || settings?.permissions?.[permission] === true ? uid : null;
+  } catch {
+    return null;
+  }
+}
+
 export default admin;
