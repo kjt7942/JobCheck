@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * 최근 며칠의 예보 캐시를 문경 관측소(ASOS) 실측값으로 교체합니다.
- * 예보 캐시를 그대로 복사해 둔 반복 일정 인스턴스(완료 체크본 등)도 함께 실측값으로 갱신.
+ * 그날의 일반 일정·반복 인스턴스(반복 마스터·취소 표식 제외)의 날씨도 실측값으로 갱신.
  * 실패해도 오늘 예보 저장에는 영향 없음 (다음 날 크론이 다시 시도).
  */
 async function correctWithObservations(today: string): Promise<number> {
@@ -15,13 +15,16 @@ async function correctWithObservations(today: string): Promise<number> {
   const observed = await getAsosDaily(day(3), day(1));
   const source = `asos_${FARM_ASOS_STN}`;
   for (const o of observed) {
-    const ref = adminDb.collection("daily_weather").doc(o.date);
-    const prev = (await ref.get()).data(); // 이미 실측이어도 다시 기록 (새벽엔 전날 통계가 늦게 확정될 수 있음)
-    await ref.set({ ...o, fetched_at: Date.now(), source });
-    if (!prev) continue;
-    const copies = await adminDb.collection("jobs").where("instance_date", "==", o.date).get();
-    await Promise.all(copies.docs
-      .filter(d => { const j = d.data(); return j.weather === prev.weather && j.temp_max === prev.temp_max && j.temp_min === prev.temp_min; })
+    // 이미 실측이어도 다시 기록 (새벽엔 전날 통계가 늦게 확정될 수 있음)
+    await adminDb.collection("daily_weather").doc(o.date).set({ ...o, fetched_at: Date.now(), source });
+
+    // 일정의 date는 ISO(UTC) 문자열 → 그날 KST 00:00~24:00 범위로 조회
+    const start = new Date(`${o.date}T00:00:00+09:00`);
+    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+    const jobs = await adminDb.collection("jobs")
+      .where("date", ">=", start.toISOString()).where("date", "<", end.toISOString()).get();
+    await Promise.all(jobs.docs
+      .filter(d => { const j = d.data(); return !j.recurrence && !j.is_cancelled && (j.weather !== o.weather || j.temp_max !== o.temp_max || j.temp_min !== o.temp_min); })
       .map(d => d.ref.update({ weather: o.weather, temp_max: o.temp_max, temp_min: o.temp_min })));
   }
   return observed.length;
