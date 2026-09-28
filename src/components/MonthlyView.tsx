@@ -463,6 +463,7 @@ export default function MonthlyView({
                               {weatherData.temp_min !== undefined && weatherData.temp_min !== null && !isNaN(Number(weatherData.temp_min)) && <span className="text-blue-400 font-black">{weatherData.temp_min}</span>}
                             </span>
                           )}
+                          {(weatherData.rain_mm ?? 0) > 0 && <span className="font-mono text-sky-500 ml-0.5 shrink-0">💧{weatherData.rain_mm}mm</span>}
                         </div>
                       );
                     })()}
@@ -640,6 +641,7 @@ export default function MonthlyView({
                         {task.temp_min !== undefined && task.temp_min !== null && !isNaN(Number(task.temp_min)) && <span className="text-blue-400">{task.temp_min}℃</span>}
                       </span>
                     )}
+                    {(task.rain_mm ?? 0) > 0 && <span className="font-mono text-[9px] mt-0.5 ml-1 text-sky-500">💧{task.rain_mm}mm</span>}
                   </div>
                 )}
                 {/* 모바일 액션 단추 (수정/삭제) */}

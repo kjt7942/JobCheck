@@ -145,6 +145,7 @@ export default function Home() {
       weather: w?.weather ?? master.weather ?? "",
       temp_max: w?.temp_max ?? master.temp_max,
       temp_min: w?.temp_min ?? master.temp_min,
+      rain_mm: w?.rain_mm,
       image_urls: master.image_urls,
       is_instance: true,
       instance_date: instDate,
@@ -172,6 +173,9 @@ export default function Home() {
     if (!user) return;
     if (!canWrite) { showToast("일정을 등록할 권한이 없습니다.", "error"); return; }
 
+    // 날씨를 따로 넘기지 않으면 그날의 자동 수집 날씨(지난 날=관측소 실측, 오늘=예보)로 채움.
+    // 반복 일정 원본은 날마다 캐시를 쓰므로 비워 둠. 아직 캐시가 없는 날은 크론이 지난 뒤 채움.
+    const w = !recurrence && weather === undefined ? dailyWeather[toDateStr(date)] : undefined;
     try {
       await jobService.createJob({
         task,
@@ -179,9 +183,10 @@ export default function Home() {
         is_done: false,
         user_id: user.uid,
         group_id: group_id || "",
-        weather: weather || "",
-        temp_max: toNum(temp_max),
-        temp_min: toNum(temp_min),
+        weather: w?.weather ?? weather ?? "",
+        temp_max: w?.temp_max ?? toNum(temp_max),
+        temp_min: w?.temp_min ?? toNum(temp_min),
+        rain_mm: w?.rain_mm,
         recurrence,
       }, imageFiles);
       showToast("새로운 일정이 등록되었습니다.");

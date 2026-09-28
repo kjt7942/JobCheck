@@ -24,8 +24,8 @@ async function correctWithObservations(today: string): Promise<number> {
     const jobs = await adminDb.collection("jobs")
       .where("date", ">=", start.toISOString()).where("date", "<", end.toISOString()).get();
     await Promise.all(jobs.docs
-      .filter(d => { const j = d.data(); return !j.recurrence && !j.is_cancelled && (j.weather !== o.weather || j.temp_max !== o.temp_max || j.temp_min !== o.temp_min); })
-      .map(d => d.ref.update({ weather: o.weather, temp_max: o.temp_max, temp_min: o.temp_min })));
+      .filter(d => { const j = d.data(); return !j.recurrence && !j.is_cancelled && (j.weather !== o.weather || j.temp_max !== o.temp_max || j.temp_min !== o.temp_min || j.rain_mm !== o.rain_mm); })
+      .map(d => d.ref.update({ weather: o.weather, temp_max: o.temp_max, temp_min: o.temp_min, rain_mm: o.rain_mm })));
   }
   return observed.length;
 }

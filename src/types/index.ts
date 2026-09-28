@@ -16,6 +16,7 @@ export interface Job {
   group_id: string;     // 반복 할일 등을 위한 그룹 ID
   temp_max?: number | null; // 최고 기온 (null = 수정 시 값 지움)
   temp_min?: number | null; // 최저 기온 (null = 수정 시 값 지움)
+  rain_mm?: number;     // 일강수량 (mm, 문경 관측소 실측)
   weather?: string;     // 날씨 설명 (맑음, 흐림 등)
   image_urls?: string[]; // 첨부된 이미지 URL 리스트
   created_at: number;   // 생성 시간 (timestamp)

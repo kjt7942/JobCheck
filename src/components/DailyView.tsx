@@ -184,10 +184,6 @@ export default function DailyView({
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
 
-  // 날씨 수동 입력 상태 (등록 후 초기화하지 않음 - Sticky)
-  const [manualWeather, setManualWeather] = useState("맑음");
-  const [tmx, setTmx] = useState<string>("20");
-  const [tmn, setTmn] = useState<string>("10");
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -236,7 +232,7 @@ export default function DailyView({
   };
 
   // 🚀 기상청 공식 단기예보 API 연동 엔진
-  const fetchFarmWeather = async (isEdit: boolean = false) => {
+  const fetchFarmWeather = async () => {
     const farmName = settings?.farm_name || "꿀송이농장";
     const lat = settings?.latitude ?? FARM_LAT;
     const lng = settings?.longitude ?? FARM_LNG;
@@ -278,16 +274,10 @@ export default function DailyView({
       return;
     }
 
-    // 화면 최고/최저 기온 및 날씨 적용 (API 성공 시에만 적용)
-    if (isEdit) {
-      setEditTmx(String(autoTempMax));
-      setEditTmn(String(autoTempMin));
-      setEditWeather(autoWeather);
-    } else {
-      setTmx(String(autoTempMax));
-      setTmn(String(autoTempMin));
-      setManualWeather(autoWeather);
-    }
+    // 수정 화면 최고/최저 기온 및 날씨 적용 (API 성공 시에만 적용)
+    setEditTmx(String(autoTempMax));
+    setEditTmn(String(autoTempMin));
+    setEditWeather(autoWeather);
   };
 
 
@@ -338,20 +328,6 @@ export default function DailyView({
   const goToPrevious = () => setViewDate(prev => subDays(prev, 1));
   const goToNext = () => setViewDate(prev => addDays(prev, 1));
   const goToToday = () => setViewDate(new Date());
-
-  // 해당 일자의 날씨(일정에 기록된 값, 없으면 자동 수집 캐시)를 일정 등록 폼의 기본값으로 설정
-  // 날짜 변경, 전체 일정 개수 변경, 또는 그날 날씨 캐시 갱신 시에만 반영 (렌더 중 조정 패턴)
-  const viewDateStr = format(viewDate, "yyyy-MM-dd");
-  const weatherDefaultsKey = `${viewDateStr}|${tasks.length}|${dailyWeather[viewDateStr]?.fetched_at ?? ""}`;
-  const [appliedWeatherKey, setAppliedWeatherKey] = useState("");
-  if (weatherDefaultsKey !== appliedWeatherKey) {
-    setAppliedWeatherKey(weatherDefaultsKey);
-    if (headerWeather) {
-      if (headerWeather.weather) setManualWeather(headerWeather.weather);
-      if (headerWeather.temp_max !== undefined && headerWeather.temp_max !== null) setTmx(String(headerWeather.temp_max));
-      if (headerWeather.temp_min !== undefined && headerWeather.temp_min !== null) setTmn(String(headerWeather.temp_min));
-    }
-  }
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean = false) => {
     const files = Array.from(e.target.files || []);
@@ -408,9 +384,9 @@ export default function DailyView({
     onAdd(
       newTitle.trim(),
       startDate.toISOString(),
-      isRecurring ? "" : manualWeather,
-      isRecurring ? "" : tmx,
-      isRecurring ? "" : tmn,
+      undefined, // 날씨는 입력받지 않음 — 등록 시 그날 자동 수집 날씨로 채움 (page.handleAddTask)
+      undefined,
+      undefined,
       gid,
       imageFiles,
       recurrenceRule
@@ -780,6 +756,7 @@ export default function DailyView({
                       ℃
                     </span>
                   )}
+                  {(headerWeather.rain_mm ?? 0) > 0 && <span className="font-mono text-sky-500">💧{headerWeather.rain_mm}mm</span>}
                 </span>
               )}
               <div className="text-[11px] font-bold text-gray-400 bg-[var(--input-bg)] px-2 py-1 rounded-lg">
@@ -891,6 +868,7 @@ export default function DailyView({
                               )}
                             </span>
                           )}
+                          {(task.rain_mm ?? 0) > 0 && <span className="border-l border-green-500/20 pl-1.5 text-sky-500">💧{task.rain_mm}mm</span>}
                         </div>
                       )}
                     </div>
@@ -1112,69 +1090,6 @@ export default function DailyView({
                 )}
               </div>
 
-              {/* Weather & Temp Manual Input */}
-              <div className="pt-2 space-y-4 border-t border-[var(--card-border)]">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-gray-500 uppercase">날씨 선택</label>
-                    <button
-                      type="button"
-                      onClick={() => fetchFarmWeather(false)}
-                      className="flex items-center gap-1 text-[10px] font-black text-blue-600 bg-blue-500/10 border border-blue-500/20 px-2.5 py-1 rounded-xl hover:bg-blue-500/20 transition-all active:scale-95"
-                    >
-                      <RefreshCw className="w-3 h-3" /> 🌦️ 농장 기상 연동
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-5 gap-1">
-                    {weatherOptions.map((opt) => (
-                      <button
-                        key={opt.label}
-                        type="button"
-                        onClick={() => setManualWeather(prev => prev === opt.label ? "" : opt.label)}
-                        className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all duration-300 hover:scale-105 active:scale-95 ${manualWeather === opt.label
-                          ? "bg-green-600 border-green-600 text-white shadow-md shadow-green-500/20"
-                          : "bg-[var(--input-bg)] border-[var(--card-border)] text-gray-400 hover:border-green-500/30 hover:bg-[var(--card-bg)]"
-                          }`}
-                      >
-                        {opt.icon}
-                        <span className="text-[10px] mt-1 font-bold">{opt.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-semibold text-gray-500 uppercase">최고 기온</label>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        min="-30"
-                        max="50"
-                        value={tmx}
-                        onChange={(e) => setTmx(e.target.value)}
-                        className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-2.5 text-sm text-red-500 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 font-extrabold text-center"
-                      />
-                      <span className="absolute right-3 top-2.5 text-xs text-gray-400 font-bold">℃</span>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-semibold text-gray-500 uppercase">최저 기온</label>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        min="-30"
-                        max="50"
-                        value={tmn}
-                        onChange={(e) => setTmn(e.target.value)}
-                        className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-2.5 text-sm text-blue-500 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 font-extrabold text-center"
-                      />
-                      <span className="absolute right-3 top-2.5 text-xs text-gray-400 font-bold">℃</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
               {/* 📸 Image Upload Section */}
               <div className="space-y-2 pt-2 border-t border-[var(--card-border)]">
                 <label className="text-xs font-semibold text-gray-500 uppercase flex items-center justify-between">
@@ -1367,7 +1282,7 @@ export default function DailyView({
                   <label className="text-xs font-bold text-gray-400 uppercase">날씨 선택</label>
                   <button
                     type="button"
-                    onClick={() => fetchFarmWeather(true)}
+                    onClick={() => fetchFarmWeather()}
                     className="flex items-center gap-1 text-[9px] font-black text-blue-600 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-lg hover:bg-blue-500/20 transition-all active:scale-95"
                   >
                     <RefreshCw className="w-2.5 h-2.5" /> 🌦️ 농장 기상 연동

@@ -114,6 +114,7 @@ export function getTasksForDate(
       weather: w?.weather ?? t.weather,
       temp_max: w?.temp_max ?? t.temp_max,
       temp_min: w?.temp_min ?? t.temp_min,
+      rain_mm: w?.rain_mm ?? t.rain_mm,
     });
   }
 
