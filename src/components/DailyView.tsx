@@ -305,6 +305,9 @@ export default function DailyView({
     return taskWithWeather ?? dailyWeather[format(viewDate, "yyyy-MM-dd")] ?? null;
   })();
 
+  // 강수량: 일정에 없으면 그날 자동 수집 캐시(관측소 실측)로 폴백
+  const headerRain = headerWeather?.rain_mm ?? dailyWeather[format(viewDate, "yyyy-MM-dd")]?.rain_mm;
+
   // 💡 작년 이맘때(±15일) 작성했던 피드백 데이터 수집
   const lastYearFeedbackTasks = (() => {
     return tasks.filter(t => {
@@ -756,7 +759,7 @@ export default function DailyView({
                       ℃
                     </span>
                   )}
-                  {(headerWeather.rain_mm ?? 0) > 0 && <span className="font-mono text-sky-500">💧{headerWeather.rain_mm}mm</span>}
+                  {typeof headerRain === "number" && <span className="font-mono text-sky-500">💧{headerRain}mm</span>}
                 </span>
               )}
               <div className="text-[11px] font-bold text-gray-400 bg-[var(--input-bg)] px-2 py-1 rounded-lg">
@@ -868,7 +871,7 @@ export default function DailyView({
                               )}
                             </span>
                           )}
-                          {(task.rain_mm ?? 0) > 0 && <span className="border-l border-green-500/20 pl-1.5 text-sky-500">💧{task.rain_mm}mm</span>}
+                          {typeof task.rain_mm === "number" && <span className="border-l border-green-500/20 pl-1.5 text-sky-500">💧{task.rain_mm}mm</span>}
                         </div>
                       )}
                     </div>

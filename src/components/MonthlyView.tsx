@@ -443,6 +443,7 @@ export default function MonthlyView({
                       const weatherTask = dayTasks.find(t => t.weather || (t.temp_max !== undefined && t.temp_max !== null && !isNaN(Number(t.temp_max))) || (t.temp_min !== undefined && t.temp_min !== null && !isNaN(Number(t.temp_min))));
                       const weatherData = weatherTask ?? dailyWeather[dayStr];
                       if (!weatherData) return null;
+                      const rain = weatherData.rain_mm ?? dailyWeather[dayStr]?.rain_mm; // 일정에 없으면 캐시 강수량
                       return (
                         <div className="flex items-center gap-0.5 text-[7.5px] md:text-[9px] text-green-600 font-bold bg-green-500/5 px-0.5 md:px-1 py-0 rounded scale-[0.82] sm:scale-100 origin-left shrink-0 ml-[-2px] sm:ml-0">
                           {weatherData.weather && (
@@ -463,7 +464,7 @@ export default function MonthlyView({
                               {weatherData.temp_min !== undefined && weatherData.temp_min !== null && !isNaN(Number(weatherData.temp_min)) && <span className="text-blue-400 font-black">{weatherData.temp_min}</span>}
                             </span>
                           )}
-                          {(weatherData.rain_mm ?? 0) > 0 && <span className="font-mono text-sky-500 ml-0.5 shrink-0">💧{weatherData.rain_mm}mm</span>}
+                          {typeof rain === "number" && <span className="font-mono text-sky-500 ml-0.5 shrink-0">💧{rain}mm</span>}
                         </div>
                       );
                     })()}
@@ -641,7 +642,7 @@ export default function MonthlyView({
                         {task.temp_min !== undefined && task.temp_min !== null && !isNaN(Number(task.temp_min)) && <span className="text-blue-400">{task.temp_min}℃</span>}
                       </span>
                     )}
-                    {(task.rain_mm ?? 0) > 0 && <span className="font-mono text-[9px] mt-0.5 ml-1 text-sky-500">💧{task.rain_mm}mm</span>}
+                    {typeof task.rain_mm === "number" && <span className="font-mono text-[9px] mt-0.5 ml-1 text-sky-500">💧{task.rain_mm}mm</span>}
                   </div>
                 )}
                 {/* 모바일 액션 단추 (수정/삭제) */}
