@@ -11,7 +11,6 @@ import "react-datepicker/dist/react-datepicker.css";
 import { compressImage } from "@/utils/imageUtils";
 import { useApp } from "@/providers/AppProvider";
 import { useSprayRainWarnings } from "@/lib/sprayWarning";
-import { authFetch } from "@/lib/firebase";
 import { FARM_LAT, FARM_LNG } from "@/lib/weather";
 
 registerLocale("ko", ko);
@@ -188,9 +187,6 @@ export default function DailyView({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editDate, setEditDate] = useState<Date | null>(null);
-  const [editWeather, setEditWeather] = useState("");
-  const [editTmx, setEditTmx] = useState<string>("");
-  const [editTmn, setEditTmn] = useState<string>("");
   const [editImageFiles, setEditImageFiles] = useState<File[]>([]);
   const [editImagePreviews, setEditImagePreviews] = useState<string[]>([]);
   const [editExistingUrls, setEditExistingUrls] = useState<string[]>([]);
@@ -230,56 +226,6 @@ export default function DailyView({
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 2500);
   };
-
-  // 🚀 기상청 공식 단기예보 API 연동 엔진
-  const fetchFarmWeather = async () => {
-    const farmName = settings?.farm_name || "꿀송이농장";
-    const lat = settings?.latitude ?? FARM_LAT;
-    const lng = settings?.longitude ?? FARM_LNG;
-
-    let apiSuccess = false;
-    let autoTempMax = 30; // 디폴트 최고 기온
-    let autoTempMin = 12; // 디폴트 최저 기온
-    let autoWeather = "맑음";
-
-    triggerToast(`📡 [기상청 날씨 연동] ${farmName}의 실시간 날씨 정보를 수신하는 중...`);
-
-    // 서버 사이드 API 라우트(기상청 공식 단기예보)를 통해 날씨 정보를 조회
-    try {
-      const apiUrl = `/api/weather?lat=${lat}&lng=${lng}`;
-
-      const controller = new AbortController();
-      const id = setTimeout(() => controller.abort(), 4500); // 4.5초 타임아웃
-
-      const response = await authFetch(apiUrl, { signal: controller.signal });
-      clearTimeout(id);
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          autoTempMax = data.temp_max;
-          autoTempMin = data.temp_min;
-          autoWeather = data.weather;
-          apiSuccess = true;
-          triggerToast(`✅ 기상청 날씨 연동 성공! (${farmName})`);
-        }
-      }
-    } catch (error) {
-      console.warn("기상청 날씨 API 호출 실패:", error);
-    }
-
-    // API 실패 시 안내 메시지 노출 및 수동 입력 유도
-    if (!apiSuccess) {
-      triggerToast("⚠️ 기상청 날씨 연동에 실패했습니다. 날씨와 기온을 직접 입력해 주세요!");
-      return;
-    }
-
-    // 수정 화면 최고/최저 기온 및 날씨 적용 (API 성공 시에만 적용)
-    setEditTmx(String(autoTempMax));
-    setEditTmn(String(autoTempMin));
-    setEditWeather(autoWeather);
-  };
-
 
   // 🚀 반복 일정 엔진(lib/recurrence)으로 조회일의 일정 계산
   const overrideIndex = useMemo(() => buildOverrideIndex(tasks), [tasks]);
@@ -405,9 +351,6 @@ export default function DailyView({
     setEditingId(job.id!);
     setEditTitle(job.task);
     setEditDate(new Date(job.date));
-    setEditWeather(job.weather || "맑음");
-    setEditTmx(job.temp_max != null && !isNaN(Number(job.temp_max)) ? String(job.temp_max) : "");
-    setEditTmn(job.temp_min != null && !isNaN(Number(job.temp_min)) ? String(job.temp_min) : "");
     setEditImageFiles([]);
     setEditImagePreviews([]);
     setEditExistingUrls(job.image_urls || []);
@@ -421,9 +364,6 @@ export default function DailyView({
     setEditingId(null);
     setEditTitle("");
     setEditDate(null);
-    setEditWeather("");
-    setEditTmx("");
-    setEditTmn("");
     setEditImageFiles([]);
     setEditImagePreviews([]);
     setEditExistingUrls([]);
@@ -449,9 +389,6 @@ export default function DailyView({
     const updates = {
       task: editTitle.trim(),
       date: editDate.toISOString(),
-      weather: editWeather,
-      temp_max: editTmx ? parseFloat(editTmx) : null, // 빈칸이면 기존 값 삭제
-      temp_min: editTmn ? parseFloat(editTmn) : null,
       image_urls: editExistingUrls,
       feedback: editFeedback.trim() || "",
       feedback_tags: editFeedbackTags
@@ -473,13 +410,6 @@ export default function DailyView({
     }
   };
 
-  const weatherOptions = [
-    { label: "맑음", icon: <Sun className="w-4 h-4" /> },
-    { label: "흐림", icon: <Cloud className="w-4 h-4" /> },
-    { label: "비", icon: <CloudRain className="w-4 h-4" /> },
-    { label: "바람", icon: <Activity className="w-4 h-4" /> },
-    { label: "눈", icon: <CloudSnow className="w-4 h-4" /> },
-  ];
 
   // 🖼️ 이미지 프리로딩 및 캐싱 로직
   useEffect(() => {
@@ -1276,68 +1206,6 @@ export default function DailyView({
                     locale="ko"
                     className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-3 py-2.5 text-sm text-[var(--foreground)] font-bold focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all cursor-pointer text-center"
                   />
-                </div>
-              </div>
-
-              {/* Weather Description */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-gray-400 uppercase">날씨 선택</label>
-                  <button
-                    type="button"
-                    onClick={() => fetchFarmWeather()}
-                    className="flex items-center gap-1 text-[9px] font-black text-blue-600 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-lg hover:bg-blue-500/20 transition-all active:scale-95"
-                  >
-                    <RefreshCw className="w-2.5 h-2.5" /> 🌦️ 농장 기상 연동
-                  </button>
-                </div>
-                <div className="grid grid-cols-5 gap-1">
-                  {weatherOptions.map((opt) => (
-                    <button
-                      key={opt.label}
-                      type="button"
-                      onClick={() => setEditWeather(prev => prev === opt.label ? "" : opt.label)}
-                      className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all duration-300 hover:scale-105 active:scale-95 ${editWeather === opt.label
-                        ? "bg-green-600 border-green-600 text-white shadow-md shadow-green-500/10"
-                        : "bg-[var(--input-bg)] border-[var(--card-border)] text-gray-400 hover:border-green-500/30 hover:bg-[var(--card-bg)]"
-                        }`}
-                    >
-                      {opt.icon}
-                      <span className="text-[9px] mt-1 font-bold">{opt.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Temperatures */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-400 uppercase">최고 기온</label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      min="-30"
-                      max="50"
-                      value={editTmx}
-                      onChange={(e) => setEditTmx(e.target.value)}
-                      className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-2 text-sm text-red-500 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 text-center font-extrabold"
-                    />
-                    <span className="absolute right-3 top-2 text-xs text-gray-400 font-bold">℃</span>
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-400 uppercase">최저 기온</label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      min="-30"
-                      max="50"
-                      value={editTmn}
-                      onChange={(e) => setEditTmn(e.target.value)}
-                      className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-2 text-sm text-blue-500 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 text-center font-extrabold"
-                    />
-                    <span className="absolute right-3 top-2 text-xs text-gray-400 font-bold">℃</span>
-                  </div>
                 </div>
               </div>
 

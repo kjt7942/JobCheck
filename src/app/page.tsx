@@ -154,6 +154,12 @@ export default function Home() {
   };
   const localDoc = (data: Omit<Job, "id" | "created_at">): Job => ({ ...data, id: overrideKey(data.group_id, data.instance_date!), created_at: Date.now() });
 
+  // 날씨는 직접 입력받지 않음 — 날짜를 옮기면 새 날짜의 자동 수집 날씨로 교체 (없으면 비움, 크론이 나중에 채움)
+  const weatherFor = (dateIso: string): Partial<Job> => {
+    const w = dailyWeather[toDateStr(dateIso)];
+    return { weather: w?.weather ?? "", temp_max: w?.temp_max ?? null, temp_min: w?.temp_min ?? null, rain_mm: w?.rain_mm ?? null };
+  };
+
   const dayBeforeISO = (instDate: string) => {
     const d = parseDateStr(instDate);
     d.setDate(d.getDate() - 1);
@@ -227,7 +233,8 @@ export default function Home() {
     if (isVirtualId(id) && !series) return;
 
     if (series && scope === "single") {
-      const data = overrideData(series.master, series.instDate, updates);
+      const moved = updates.date && toDateStr(updates.date) !== series.instDate;
+      const data = overrideData(series.master, series.instDate, moved ? { ...updates, ...weatherFor(updates.date!) } : updates);
       await withOptimistic(prev => [...prev, localDoc(data)], () => jobService.createJob(data, newImageFiles), "수정에 실패했습니다.");
       return;
     }
@@ -264,6 +271,9 @@ export default function Home() {
     const targetId = series ? series.master.id! : id;
     const target = tasks.find(t => t.id === targetId);
     let docUpdates = updates;
+    if (!series && target && updates.date && toDateStr(updates.date) !== toDateStr(target.date)) {
+      docUpdates = { ...updates, ...weatherFor(updates.date) };
+    }
     if (series) {
       // 마스터의 시작 날짜는 유지하고 시각만 반영
       const masterDate = new Date(series.master.date);
